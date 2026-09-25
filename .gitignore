@@ -1,0 +1,16 @@
+node_modules/
+npm-debug.log*
+
+# Secrets are never committed — only the template is.
+secrets/*
+!secrets/.env.example
+
+# Personal Claude Code settings (machine-specific)
+.claude/settings.local.json
+
+# Local sandbox data (npm run sandbox)
+.sandbox/
+
+.DS_Store
+.vscode/
+.idea/

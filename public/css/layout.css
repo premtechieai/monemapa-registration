@@ -1,0 +1,266 @@
+/*
+ * App shell: header, step sidebar (desktop/tablet) or progress bar (mobile),
+ * and the main content column. Mobile-first overrides are at the bottom.
+ */
+.page {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  padding: 32px 16px 64px;
+}
+
+.frame {
+  width: 100%;
+  max-width: 1120px;
+  min-height: 720px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--color-card);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+
+/* --- Header ------------------------------------------------------------- */
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.brand__mark {
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.brand__name {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.brand__name span {
+  color: var(--color-accent);
+}
+
+.app-header__badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--color-neutral-700);
+}
+
+/* --- Body: sidebar + main --------------------------------------------------- */
+.frame__body {
+  flex: 1;
+  display: flex;
+}
+
+.steps-aside {
+  width: 320px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  padding: 40px 32px;
+  background: var(--color-surface);
+  border-right: 1px solid var(--color-divider);
+}
+
+.steps-aside__kicker {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-neutral-700);
+}
+
+.steps-aside__title {
+  margin-top: 8px;
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.steps-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  gap: 12px;
+  padding: 16px 0;
+  border-top: 1px solid var(--color-divider);
+}
+
+.step__num {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-neutral-500);
+}
+
+.step__label {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--color-neutral-700);
+}
+
+.step__status {
+  font-size: 13px;
+  color: var(--color-neutral-700);
+}
+
+.step.is-current .step__num,
+.step.is-done .step__num {
+  color: var(--color-accent);
+}
+
+.step.is-current .step__label,
+.step.is-done .step__label {
+  color: var(--color-text);
+}
+
+.step.is-current .step__label {
+  font-weight: 700;
+}
+
+.steps-aside__note {
+  margin-top: auto;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-neutral-700);
+}
+
+/* Compact progress bar shown instead of the sidebar on small screens. */
+.steps-progress {
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.steps-progress__bars {
+  display: flex;
+  gap: 4px;
+}
+
+.steps-progress__bar {
+  flex: 1;
+  height: 4px;
+  border-radius: 4px;
+  background: var(--color-neutral-300);
+  transition: background 0.3s ease;
+}
+
+.steps-progress__bar.is-active {
+  background: var(--color-accent);
+}
+
+.steps-progress__caption {
+  font-size: 13px;
+  color: var(--color-neutral-700);
+}
+
+.main {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 56px 64px;
+}
+
+.main__inner {
+  width: 100%;
+  max-width: 440px;
+}
+
+/* --- Tablet ------------------------------------------------------------- */
+@media (max-width: 1023px) {
+  .steps-aside {
+    width: 260px;
+    padding: 32px 24px;
+  }
+
+  .steps-aside__title {
+    font-size: 24px;
+  }
+
+  .main {
+    padding: 40px;
+  }
+}
+
+/* --- Mobile ------------------------------------------------------------- */
+@media (max-width: 767px) {
+  .page {
+    padding: 0;
+  }
+
+  .frame {
+    min-height: 100vh;
+    min-height: 100dvh;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .app-header {
+    padding: 14px 20px;
+  }
+
+  .frame__body {
+    flex-direction: column;
+  }
+
+  .steps-aside {
+    display: none;
+  }
+
+  .steps-progress {
+    display: flex;
+  }
+
+  .main {
+    padding: 28px 20px 40px;
+  }
+
+  .main__inner {
+    max-width: none;
+  }
+}
+
+@media (max-width: 380px) {
+  .app-header__badge-text {
+    display: none;
+  }
+}

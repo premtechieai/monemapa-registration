@@ -1,0 +1,26 @@
+{
+  "name": "monemapa-registration",
+  "version": "1.0.0",
+  "description": "Passwordless registration & OTP sign-in module (Node.js + Express + Supabase Auth)",
+  "type": "module",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch-path=src --watch-path=config src/server.js",
+    "sandbox": "node --watch-path=src --watch-path=config src/sandbox.js",
+    "check": "node scripts/check-connection.js",
+    "test": "node --test \"test/**/*.test.js\""
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "express-rate-limit": "^7.4.0",
+    "helmet": "^8.0.0",
+    "zod": "^3.23.8"
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "app": {
+    "name": "MoneMapa",
+    "mode": "supabase",
+    "port": 3000,
+    "baseUrl": "http://localhost:3000",
+    "trustProxy": false
+  },
+  "api": {
+    "basePath": "/v1"
+  },
+  "routes": {
+    "register": "/register",
+    "verify": "/verify",
+    "welcome": "/welcome",
+    "login": "/login",
+    "otp": "/login/code",
+    "dashboard": "/dashboard",
+    "verified": "/verified"
+  },
+  "links": {
+    "termsUrl": "/legal/terms.html",
+    "privacyUrl": "/legal/privacy.html"
+  },
+  "registration": {
+    "linkTtlHours": 24,
+    "pollIntervalSec": 3,
+    "pollTimeoutMin": 30,
+    "resendCooldownSec": 60
+  },
+  "otp": {
+    "length": 6,
+    "ttlSec": 300,
+    "maxAttempts": 5,
+    "resendCooldownSec": 60
+  },
+  "session": {
+    "cookiePrefix": "mm",
+    "refreshTtlDays": 30
+  },
+  "rateLimit": {
+    "windowMin": 15,
+    "maxRequests": 60
+  },
+  "logging": {
+    "level": "info"
+  }
+}

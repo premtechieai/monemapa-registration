@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MoneMapa · Sandbox</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap">
+  <link rel="stylesheet" href="/css/tokens.css">
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/components.css">
+  <link rel="stylesheet" href="/sandbox/assets/sandbox.css">
+  <script type="module" src="/sandbox/assets/sandbox.js"></script>
+</head>
+<body>
+  <div class="sbx">
+    <header class="sbx__head">
+      <div>
+        <div class="kicker">Sandbox · development only</div>
+        <h1 class="sbx__title">Mock email, database &amp; event log</h1>
+        <p class="note">Nothing is really sent. Open the verification link or copy the sign-in code from the inbox. Try <strong>ada@example.com</strong> to hit the already-registered path.</p>
+      </div>
+      <div class="btn-row">
+        <a class="btn btn-primary" href="/register" target="_blank" rel="noopener">Open the app ↗</a>
+        <button class="btn btn-secondary" id="reset" type="button">Reset data</button>
+      </div>
+    </header>
+
+    <div class="sbx__grid">
+      <section class="sbx__panel" aria-labelledby="inbox-h">
+        <div class="sbx__panel-head"><h2 id="inbox-h">Inbox</h2><span id="inbox-count" class="muted"></span></div>
+        <div class="sbx__list" id="inbox"></div>
+      </section>
+
+      <section class="sbx__panel" aria-labelledby="db-h">
+        <div class="sbx__panel-head">
+          <h2 id="db-h">Database</h2>
+          <div class="sbx__tabs" role="tablist" id="db-tabs"></div>
+        </div>
+        <div class="sbx__list" id="db"></div>
+      </section>
+
+      <section class="sbx__panel" aria-labelledby="log-h">
+        <div class="sbx__panel-head"><h2 id="log-h">Event log</h2><span class="muted">live</span></div>
+        <div class="sbx__list" id="log"></div>
+      </section>
+    </div>
+  </div>
+</body>
+</html>

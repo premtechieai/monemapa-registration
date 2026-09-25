@@ -1,0 +1,8 @@
+{
+  "logging": {
+    "level": "debug"
+  },
+  "rateLimit": {
+    "maxRequests": 500
+  }
+}

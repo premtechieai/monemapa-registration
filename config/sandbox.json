@@ -1,0 +1,14 @@
+{
+  "registration": {
+    "resendCooldownSec": 15
+  },
+  "otp": {
+    "resendCooldownSec": 15
+  },
+  "sandbox": {
+    "stateFile": ".sandbox/state.json",
+    "seedUsers": [
+      { "email": "ada@example.com", "fullName": "Ada Lovelace" }
+    ]
+  }
+}

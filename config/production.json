@@ -1,0 +1,6 @@
+{
+  "app": {
+    "baseUrl": "https://app.monemapa.com",
+    "trustProxy": true
+  }
+}
