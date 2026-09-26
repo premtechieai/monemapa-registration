@@ -179,7 +179,7 @@ For when the email server isn't available. Set in `secrets/.env` (or as an envir
 | `false` (default) | Live activation email over SMTP | Live one-time code over SMTP |
 
 Everything else stays real: database writes, sessions, code expiry and the attempt limit. `SMTP_USER` /
-`SMTP_PASSWORD` are optional while it's on, and the UI shows a "Stub mode" badge.
+`SMTP_PASSWORD` are optional while it's on, and nothing in the UI reveals stub mode.
 
 > ⚠️ `STUB_ON=true` is currently **allowed in production** (temporary, while the email server is unavailable). Anyone
 > who knows an account's email can sign in with `123456`, so the server logs an error-level warning at startup.
@@ -215,6 +215,9 @@ All URLs, routes, timings and email settings live in `config/*.json`. The browse
 | `api.basePath` | `/v1` | API prefix |
 | `routes.*` | `/register`, `/verify`, `/welcome`, `/login`, `/login/code`, `/dashboard`, `/verified` | Page URLs |
 | `links.termsUrl` / `privacyUrl` | `/legal/*.html` | Linked from the registration form |
+| `ui.showPreviewToggle` | `true` | Desktop/Mobile preview toolbar above the registration and dashboard pages (`false` = full-page layout) |
+| `dashboard.currency` | `AED` | Currency used for all dashboard amounts |
+| `dashboard.transactionsUrl` | `#` | Transactions page link (`#` = not built yet: links disabled, add buttons hidden) |
 | `registration.linkTtlHours` | `24` | How long an activation link stays valid |
 | `registration.pollIntervalSec` | `3` | Status check interval |
 | `registration.pollTimeoutMin` | `30` | Stop auto-polling after this long |
@@ -269,10 +272,25 @@ All errors use the same shape: `{ "error": { "code": "EMAIL_EXISTS", "message": 
 - **Trade-off:** as the design specifies, sign-in says whether an email is unknown or unverified. This helps users
   but allows account enumeration. Rate limiting reduces the risk. For stricter privacy, return one generic response.
 
+## Dashboard
+
+After a successful sign-in (and from **Go to dashboard** after registration) the browser loads the dashboard page at
+`routes.dashboard` (default `/dashboard`, configurable).
+
+- **Session sharing:** the dashboard is served by the same app, so the `httpOnly` session cookie set at sign-in is
+  sent with it automatically. The server checks it before serving the page (`requirePageSession`) and redirects to
+  sign-in when it's missing or expired; the page then loads the user from `GET /v1/me`. **Sign out** revokes the
+  session. (A dashboard on a *different* domain would not receive the cookie.)
+- **Files:** `public/dashboard.html`, `public/css/dashboard.css`, `public/js/dashboard/` (`main.js`, SVG `charts.js`,
+  and the design's `transactions-service.js`).
+- **Data:** `transactions-service.js` is the design's demo adapter: it seeds sample transactions and stores them in
+  the browser's `localStorage`. Replace it with a `/v1/transactions` API when that module is built.
+- **Config:** `dashboard.currency` (default `AED`; e.g. `USD`, `INR`, `SGD`) and `dashboard.transactionsUrl`. While it's `#`, the
+  Transactions links show as "Coming soon" and the add-income/expense buttons are hidden.
+
 ## Integration points
 
-- **Dashboard hand-off**: `public/js/views/dashboardView.js` is a placeholder that shows the signed-in user. Mount your
-  real dashboard there, or change `routes.dashboard` to point elsewhere. Protect server routes with
-  `requireAuth` (`src/modules/auth/auth.middleware.js`), which sets `req.user`.
+- **Protecting more routes:** use `requireAuth` (API, 401 JSON) or `requirePageSession` (pages, redirect to sign-in)
+  from `src/modules/auth/auth.middleware.js`; `requireAuth` sets `req.user`.
 - **Branding**: colours, radii and fonts are CSS variables in `public/css/tokens.css`; email styling is inline in the
   templates.

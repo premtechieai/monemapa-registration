@@ -73,7 +73,7 @@
   color: var(--color-neutral-700);
 }
 
-@media (max-width: 767px) {
+@container frame (max-width: 767px) {
   .title {
     font-size: 28px;
   }
@@ -410,7 +410,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-@media (max-width: 380px) {
+@container frame (max-width: 380px) {
   .otp {
     gap: 6px;
   }
@@ -492,25 +492,55 @@
   }
 }
 
-/* Badge shown only in sandbox mode, linking to the mock inbox. */
-.sandbox-pill {
-  position: fixed;
-  right: 16px;
-  bottom: 16px;
-  z-index: 10;
-  padding: 8px 14px;
-  border-radius: 999px;
-  background: var(--color-text);
-  color: #fff;
-  font-size: 13px;
-  font-weight: 600;
-  text-decoration: none;
-  box-shadow: var(--shadow-md);
+/* --- Desktop / Mobile preview toolbar (above the page frame) --------------------- */
+.preview-bar {
+  width: 100%;
+  max-width: 1120px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
-.sandbox-pill:hover {
-  color: #fff;
-  background: var(--color-accent-700);
+.preview-bar[hidden] {
+  display: none;
+}
+
+.preview-bar__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.preview-bar__title {
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.preview-bar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.preview-bar__btn {
+  min-height: 40px;
+  font-weight: 500;
+}
+
+.preview-bar__reset {
+  min-height: 40px;
+  gap: 6px;
+  padding: 0 4px;
+  color: var(--color-accent);
+}
+
+/* On a phone the page is already in mobile layout, so the toolbar isn't needed. */
+@media (max-width: 767px) {
+  .preview-bar {
+    display: none !important;
+  }
 }
 
 /* Loading placeholder while the dashboard fetches the session. */

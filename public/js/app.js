@@ -13,13 +13,14 @@ import { createRouter } from './core/router.js';
 import { h, replaceChildren } from './core/dom.js';
 import { renderStepper } from './components/stepper.js';
 import { alertBox } from './components/ui.js';
+import { mountPreviewToggle } from './components/previewToggle.js';
+import { store } from './core/store.js';
 
 import registerView from './views/registerView.js';
 import verifyView from './views/verifyView.js';
 import welcomeView from './views/welcomeView.js';
 import loginView from './views/loginView.js';
 import otpView from './views/otpView.js';
-import dashboardView from './views/dashboardView.js';
 
 const views = {
   register: registerView,
@@ -27,7 +28,6 @@ const views = {
   welcome: welcomeView,
   login: loginView,
   otp: otpView,
-  dashboard: dashboardView,
 };
 
 const outlet = document.getElementById('view');
@@ -42,20 +42,19 @@ async function boot() {
     return;
   }
 
-  // Stub mode: no emails are sent, so tell testers how to get through.
-  if (config.stub?.enabled) {
-    document.body.append(
-      h(
-        'div',
-        { class: 'sandbox-pill', role: 'note' },
-        `Stub mode · auto-verify in ${config.stub.autoVerifyAfterSec}s · sign-in code ${config.stub.otpCode}`,
-      ),
-    );
-  } else if (config.sandbox) {
-    // Local sandbox: nothing is really emailed, so point testers at the mock inbox.
-    document.body.append(
-      h('a', { class: 'sandbox-pill', href: '/sandbox', target: '_blank', rel: 'noopener' }, 'Sandbox mode · Open inbox ↗'),
-    );
+  // Desktop / Mobile preview toolbar (config.ui.showPreviewToggle).
+  // "Reset" abandons the in-progress flow and starts again at registration.
+  if (config.ui?.showPreviewToggle) {
+    mountPreviewToggle({
+      slot: document.getElementById('preview-bar'),
+      frame: document.getElementById('frame'),
+      kicker: `${config.appName} · auth/registration v1.0`,
+      title: 'Registration & OTP sign-in',
+      onReset: () => {
+        store.clear();
+        location.assign(config.routes.register);
+      },
+    });
   }
 
   const router = createRouter({

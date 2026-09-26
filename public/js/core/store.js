@@ -36,6 +36,10 @@ export const store = {
     else state[key] = value;
     write(state);
   },
+  /** Forget all flow state (used by the preview toolbar's "Reset"). */
+  clear() {
+    write({});
+  },
   /** Read a value once and remove it (handy for one-shot pre-fills). */
   take(key) {
     const value = store.get(key);
