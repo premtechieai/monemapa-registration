@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#8839ef">
+  <title>MoneMapa · Transactions</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap">
+
+  <link rel="stylesheet" href="/css/tokens.css">
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/components.css">
+  <link rel="stylesheet" href="/css/dashboard.css">
+  <link rel="stylesheet" href="/css/transactions.css">
+
+  <!-- Transactions data service (window.MoneMapaTx), shared with the dashboard. -->
+  <script src="/js/finance/transactions-service.js" defer></script>
+  <script type="module" src="/js/transactions/main.js"></script>
+</head>
+<body class="dash">
+<div class="dash-page" id="page">
+  <!-- Desktop / Mobile preview toolbar. Filled by js/components/previewToggle.js -->
+  <div class="preview-bar" id="preview-bar" hidden></div>
+
+  <div class="dash-frame" id="frame">
+  <div class="dash-scroll">
+  <header class="dash-header">
+    <div class="dash-header__left">
+      <a class="brand" href="" data-nav="dashboard" aria-label="MoneMapa dashboard">
+        <span class="brand__mark" aria-hidden="true">M</span>
+        <span class="brand__name">Mone<span>Mapa</span></span>
+      </a>
+      <nav class="dash-nav" aria-label="Primary">
+        <a class="dash-nav__link" href="" data-nav="dashboard">Overview</a>
+        <a class="dash-nav__link is-active" aria-current="page" href="" data-nav="transactions">Transactions</a>
+        <a class="dash-nav__link" href="#" aria-disabled="true" title="Coming soon">Budgets</a>
+        <a class="dash-nav__link" href="#" aria-disabled="true" title="Coming soon">Reports</a>
+      </nav>
+    </div>
+    <div class="dash-header__right">
+      <button type="button" class="btn btn-secondary dash-signout" id="sign-out" disabled>Sign out</button>
+      <div class="avatar" id="avatar" role="img" aria-label="Account">··</div>
+    </div>
+  </header>
+
+  <main class="dash-main tx-main" id="main" aria-busy="true">
+    <div class="dash-head">
+      <div>
+        <h1 class="dash-title" tabindex="-1">Transactions</h1>
+        <p class="dash-subtitle">Track income and expenses. Categories are suggested by AI — you always have the final say.</p>
+      </div>
+      <button type="button" class="btn btn-primary tx-add-btn" id="add-btn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        Add transaction
+      </button>
+    </div>
+
+    <div class="alert-slot" id="error" hidden></div>
+
+    <!-- Month totals: three cards (wide) or one combined card (narrow) -->
+    <div id="summary"></div>
+
+    <div class="tx-filters">
+      <div class="month-picker" role="group" aria-label="Month">
+        <button type="button" class="month-picker__btn" id="prev-month" aria-label="Previous month">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+        </button>
+        <span class="month-picker__label" id="month-label" aria-live="polite"></span>
+        <button type="button" class="month-picker__btn" id="next-month" aria-label="Next month">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+      </div>
+      <div class="segmented" role="tablist" aria-label="Type" id="type-tabs">
+        <button type="button" role="tab" data-type="all" aria-selected="true">All</button>
+        <button type="button" role="tab" data-type="income" aria-selected="false">Income</button>
+        <button type="button" role="tab" data-type="expense" aria-selected="false">Expense</button>
+      </div>
+      <select class="tx-select" id="cat-filter" aria-label="Filter by category">
+        <option value="all">All categories</option>
+      </select>
+      <div class="tx-search">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8c8fa1" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input type="search" class="input" id="search" aria-label="Search transactions" placeholder="Search description or category">
+      </div>
+    </div>
+
+    <!-- Table (wide), grouped list (narrow) or empty state -->
+    <div id="results"></div>
+  </main>
+
+  <!-- Mobile: bottom navigation (same as the dashboard) -->
+  <nav class="dash-tabbar" aria-label="Primary">
+    <a class="dash-tabbar__link" href="" data-nav="dashboard">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>Overview
+    </a>
+    <a class="dash-tabbar__link is-active" aria-current="page" href="" data-nav="transactions">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16M7 4 3 8M7 4l4 4M17 20V4M17 20l-4-4M17 20l4-4"/></svg>Transactions
+    </a>
+    <a class="dash-tabbar__link" href="#" aria-disabled="true" title="Coming soon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3v9l6 4"/></svg>Budgets
+    </a>
+    <a class="dash-tabbar__link" href="#" aria-disabled="true" title="Coming soon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Reports
+    </a>
+  </nav>
+  </div><!-- /.dash-scroll -->
+
+  <!-- Mobile: floating "Add transaction" button -->
+  <button type="button" class="tx-fab" id="fab" aria-label="Add transaction">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+  </button>
+
+  <!-- Add / edit transaction: side panel (wide) or bottom sheet (narrow) -->
+  <div class="tx-backdrop" id="backdrop" aria-hidden="true"></div>
+  <form class="tx-editor" id="editor" role="dialog" aria-modal="true" aria-labelledby="editor-title" novalidate hidden>
+    <div class="tx-editor__grip" aria-hidden="true"></div>
+    <div class="tx-editor__head">
+      <h2 class="tx-editor__title" id="editor-title">Add transaction</h2>
+      <button type="button" class="icon-btn" id="editor-close" aria-label="Close">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+
+    <div class="tx-editor__body">
+      <div class="segmented segmented--block" role="radiogroup" aria-label="Transaction type" id="type-radios">
+        <button type="button" role="radio" data-type="expense" aria-checked="true">Expense</button>
+        <button type="button" role="radio" data-type="income" aria-checked="false">Income</button>
+      </div>
+
+      <div class="field">
+        <label class="field__label" for="tx-amount">Amount</label>
+        <div class="tx-amount">
+          <span class="tx-amount__symbol" id="cur-symbol" aria-hidden="true"></span>
+          <input class="input tx-amount__input" id="tx-amount" inputmode="decimal" autocomplete="off" placeholder="0.00" aria-describedby="err-amount">
+        </div>
+        <div class="field__error" id="err-amount"></div>
+      </div>
+
+      <div class="field">
+        <label class="field__label" for="tx-desc">Description</label>
+        <input class="input" id="tx-desc" autocomplete="off" placeholder="e.g. Uber to airport" aria-describedby="err-desc">
+        <div class="field__error" id="err-desc"></div>
+      </div>
+
+      <div class="field">
+        <div class="tx-cat-head">
+          <label class="field__label" for="tx-cat">Category</label>
+          <span class="tx-ai-loading" id="ai-loading" hidden><span class="spinner" aria-hidden="true"></span> Suggesting…</span>
+        </div>
+        <div class="tx-ai" id="ai-box" hidden>
+          <div class="tx-ai__title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l2.2 6.3L20.5 10.5 14.2 12.7 12 19l-2.2-6.3L3.5 10.5l6.3-2.2z"/></svg>
+            AI suggestions · tap to choose
+          </div>
+          <div class="tx-ai__chips" id="ai-chips"></div>
+        </div>
+        <select class="tx-select tx-select--block" id="tx-cat" aria-describedby="err-cat"></select>
+        <div class="field__error" id="err-cat"></div>
+        <div class="tx-override" id="override" hidden>
+          <div class="tx-override__row">
+            <span id="override-text"></span>
+            <button type="button" class="btn btn-ghost" id="use-suggestion">Use suggestion</button>
+          </div>
+          <label class="checkbox">
+            <input type="checkbox" id="learn-rule">
+            <span id="learn-text"></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field__label" for="tx-date">Date</label>
+        <input class="input" id="tx-date" type="date" aria-describedby="err-date">
+        <div class="field__error" id="err-date"></div>
+      </div>
+
+      <div class="field">
+        <label class="field__label" for="tx-note">Note <span class="muted">(optional)</span></label>
+        <textarea class="input tx-note" id="tx-note" rows="2"></textarea>
+      </div>
+    </div>
+
+    <div class="tx-editor__foot">
+      <div class="tx-confirm" id="confirm" role="alert" hidden>
+        <div><strong>Delete this transaction?</strong><span id="confirm-text"></span></div>
+        <div class="btn-row">
+          <button type="button" class="btn btn-secondary" id="keep">Keep</button>
+          <button type="button" class="btn tx-danger" id="confirm-delete">Delete</button>
+        </div>
+      </div>
+      <div class="tx-editor__actions" id="actions">
+        <button type="button" class="btn tx-delete" id="delete-btn" hidden>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>Delete
+        </button>
+        <span class="tx-spacer"></span>
+        <button type="button" class="btn btn-secondary" id="cancel">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="save">Add transaction</button>
+      </div>
+    </div>
+  </form>
+
+  <div class="tx-toast" id="toast" role="status" hidden>
+    <span id="toast-text"></span>
+    <button type="button" id="undo" hidden>Undo</button>
+  </div>
+  </div><!-- /.dash-frame -->
+</div><!-- /.dash-page -->
+</body>
+</html>

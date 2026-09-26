@@ -16,6 +16,7 @@
     "login": "/login",
     "otp": "/login/code",
     "dashboard": "/dashboard",
+    "transactions": "/transactions",
     "verified": "/verified"
   },
   "links": {
@@ -25,9 +26,12 @@
   "ui": {
     "showPreviewToggle": true
   },
-  "dashboard": {
-    "currency": "AED",
-    "transactionsUrl": "#"
+  "finance": {
+    "currency": "AED"
+  },
+  "transactions": {
+    "autoApplyAI": true,
+    "showConfidence": true
   },
   "registration": {
     "linkTtlHours": 24,

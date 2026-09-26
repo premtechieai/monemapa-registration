@@ -39,6 +39,11 @@ a:hover {
   box-shadow: var(--focus-ring);
 }
 
+/* `hidden` always wins over component display rules (flex, grid, …). */
+[hidden] {
+  display: none !important;
+}
+
 .visually-hidden {
   position: absolute !important;
   width: 1px;
