@@ -2,26 +2,25 @@
  * RegistrationService — sign up with name + email, confirmed by an email link.
  *
  * Flow:
- *   1. register()   → reject if the email already has an account; otherwise
- *                     Supabase Auth creates the (unconfirmed) user and emails
- *                     a verification link. We store a pending registration.
- *   2. getStatus()  → polled by the browser. Asks Supabase whether the email
- *                     is confirmed; when it is, writes the profile row
- *                     (the permanent registration record) and starts a session.
- *   3. resend()     → emails a fresh link (the previous one stops working).
+ *   1. register()     → reject if the email already has an account; otherwise
+ *                       store a pending registration and email an activation
+ *                       link containing a random single-use token.
+ *   2. verifyEmail()  → called when the link is opened: creates the profile
+ *                       (the permanent registration record).
+ *   3. getStatus()    → polled by the registering browser; once verified it
+ *                       is allowed to start a session exactly once.
+ *   4. resend()       → emails a fresh link (the previous one stops working).
  *
  * Only the browser that registered can poll: it holds a random secret in an
- * httpOnly cookie, and we store just its hash.
+ * httpOnly cookie. Only hashes of the poll secret and link token are stored.
  */
 import config from '../../config/index.js';
-import { authAdmin } from '../../lib/supabase.js';
 import { Errors } from '../../lib/errors.js';
 import { matchesHash, randomToken, sha256 } from '../../lib/crypto.js';
-import { mapAuthError } from '../../lib/supabaseErrors.js';
 import logger from '../../lib/logger.js';
 import * as users from '../users/users.repository.js';
 import { toPublicUser } from '../users/users.mapper.js';
-import { createSessionForEmail } from '../auth/auth.service.js';
+import { sendVerificationEmail } from '../email/email.service.js';
 import * as registrations from './registration.repository.js';
 
 export const RegistrationStatus = Object.freeze({
@@ -30,26 +29,23 @@ export const RegistrationStatus = Object.freeze({
   EXPIRED: 'EXPIRED',
 });
 
-/** Where the verification link lands after Supabase confirms the email. */
-const verifiedRedirectUrl = () => `${config.app.baseUrl}${config.routes.verified}`;
-
 const secondsSince = (iso) => (Date.now() - new Date(iso).getTime()) / 1000;
 const isExpired = (registration) => new Date(registration.expires_at) <= new Date();
 const resendWaitSec = (registration) =>
   Math.max(0, Math.ceil(config.registration.resendCooldownSec - secondsSince(registration.last_sent_at)));
 
 /**
- * Ask Supabase to email a verification link. For a brand-new email this also
- * creates the (unconfirmed) auth user; for an unconfirmed one it re-sends.
- * @returns {Promise<string>} the Supabase auth user id
+ * The activation link. The token travels in the URL *fragment* (#...), which
+ * browsers never send to servers, so it stays out of access logs and proxies;
+ * the /verified page reads it and POSTs it to the API.
  */
-async function sendVerificationEmail(email, fullName) {
-  const { data, error } = await authAdmin.inviteUserByEmail(email, {
-    data: { full_name: fullName },
-    redirectTo: verifiedRedirectUrl(),
-  });
-  if (error) throw mapAuthError(error, 'inviteUserByEmail', config.registration.resendCooldownSec);
-  return data.user.id;
+const activationLink = (token) => `${config.app.baseUrl}${config.routes.verified}#token=${encodeURIComponent(token)}`;
+
+/** Create a fresh link token, email it, and return the hash to store. */
+async function emailNewLink({ email, name }) {
+  const token = randomToken();
+  await sendVerificationEmail({ to: email, name, link: activationLink(token) });
+  return sha256(token);
 }
 
 /** Public view of a registration returned to the browser. */
@@ -62,6 +58,8 @@ const toPendingResponse = (registration) => ({
   resendAvailableInSec: resendWaitSec(registration),
 });
 
+const newExpiry = () => new Date(Date.now() + config.registration.linkTtlHours * 60 * 60 * 1000);
+
 /**
  * Step 1 — start a registration.
  * @returns {Promise<{ registration: object, pollSecret: string }>}
@@ -71,7 +69,6 @@ export async function register({ name, email }) {
   if (await users.findByEmail(email)) throw Errors.emailExists();
 
   const pollSecret = randomToken();
-  const pollSecretHash = sha256(pollSecret);
   let pending = await registrations.findPendingByEmail(email);
 
   if (pending && isExpired(pending)) {
@@ -82,27 +79,54 @@ export async function register({ name, email }) {
   if (pending) {
     // Same email submitted again (new tab, typo fix, etc.). Hand polling to
     // this browser and re-send the link if the cooldown allows.
-    const patch = { full_name: name, poll_secret_hash: pollSecretHash };
+    const patch = { full_name: name, poll_secret_hash: sha256(pollSecret) };
     if (resendWaitSec(pending) === 0) {
-      await sendVerificationEmail(email, name);
-      Object.assign(patch, { last_sent_at: new Date().toISOString(), send_count: pending.send_count + 1 });
+      Object.assign(patch, {
+        verification_token_hash: await emailNewLink({ email, name }),
+        last_sent_at: new Date().toISOString(),
+        send_count: pending.send_count + 1,
+        expires_at: newExpiry().toISOString(),
+      });
     }
     const updated = await registrations.update(pending.id, patch);
     logger.info('Registration resumed', { registrationId: updated.id });
     return { registration: toPendingResponse(updated), pollSecret };
   }
 
-  const authUserId = await sendVerificationEmail(email, name);
+  // Email first: if sending fails, no half-created registration is left behind.
+  const verificationTokenHash = await emailNewLink({ email, name });
   const created = await registrations.create({
     email,
     fullName: name,
-    authUserId,
-    pollSecretHash,
-    expiresAt: new Date(Date.now() + config.registration.linkTtlHours * 60 * 60 * 1000),
+    pollSecretHash: sha256(pollSecret),
+    verificationTokenHash,
+    expiresAt: newExpiry(),
   });
 
   logger.info('Registration started, verification email sent', { registrationId: created.id });
   return { registration: toPendingResponse(created), pollSecret };
+}
+
+/**
+ * Step 2 — the activation link was opened. Creates the profile.
+ * @returns {Promise<{ status: 'VERIFIED', email: string }>}
+ */
+export async function verifyEmail(token) {
+  const registration = await registrations.findByVerificationTokenHash(sha256(token));
+  // Unknown, already used, or replaced by a newer link.
+  if (!registration || registration.status !== RegistrationStatus.PENDING) throw Errors.linkInvalid();
+  if (isExpired(registration)) {
+    await registrations.markExpired(registration.id);
+    throw Errors.linkExpired();
+  }
+
+  // Requirement: save the successful registration in the database.
+  const profile = await users.create({ email: registration.email, fullName: registration.full_name });
+  const verified = await registrations.markVerified(registration.id, profile.id);
+  if (!verified) throw Errors.linkInvalid(); // another click won the race
+
+  logger.info('Email verified, registration completed', { registrationId: registration.id, userId: profile.id });
+  return { status: RegistrationStatus.VERIFIED, email: registration.email };
 }
 
 /** Load a registration and check the caller owns it (holds its poll secret). */
@@ -114,44 +138,36 @@ async function loadOwned(registrationId, pollSecret) {
 }
 
 /**
- * Step 2 — the verification check the browser polls.
- * @returns {Promise<{ status: string, user?: object, session?: object }>}
- *          `session` is present only on the single poll that completed registration.
+ * Step 3 — the verification check the browser polls.
+ * @returns {Promise<{ status: string, user?: object, startSessionFor?: string }>}
+ *          `startSessionFor` (a user id) is present only on the single poll
+ *          that is allowed to sign the user in.
  */
 export async function getStatus(registrationId, pollSecret) {
   const registration = await loadOwned(registrationId, pollSecret);
 
   if (registration.status === RegistrationStatus.VERIFIED) {
-    return { status: RegistrationStatus.VERIFIED, user: toPublicUser(await users.findById(registration.auth_user_id)) };
+    // Rows verified before migration 002 have no user_id; match them by email.
+    const profile = registration.user_id
+      ? await users.findById(registration.user_id)
+      : await users.findByEmail(registration.email);
+    const claimed = await registrations.claimSession(registration.id);
+    return {
+      status: RegistrationStatus.VERIFIED,
+      user: toPublicUser(profile),
+      startSessionFor: claimed ? profile.id : undefined,
+    };
   }
+
   if (registration.status === RegistrationStatus.EXPIRED || isExpired(registration)) {
     if (registration.status !== RegistrationStatus.EXPIRED) await registrations.markExpired(registration.id);
     return { status: RegistrationStatus.EXPIRED };
   }
 
-  // Has the user clicked the link? Supabase sets email_confirmed_at when they do.
-  const { data, error } = await authAdmin.getUserById(registration.auth_user_id);
-  if (error) throw mapAuthError(error, 'getUserById');
-  if (!data.user?.email_confirmed_at) {
-    return { status: RegistrationStatus.PENDING, resendAvailableInSec: resendWaitSec(registration) };
-  }
-
-  // Verified → save the permanent registration record.
-  const profile = await users.createFromRegistration({
-    id: registration.auth_user_id,
-    email: registration.email,
-    fullName: registration.full_name,
-  });
-
-  // Only the poll that wins this claim creates a session.
-  const claimed = await registrations.markVerifiedAndClaimSession(registration.id);
-  const session = claimed ? await createSessionForEmail(registration.email) : null;
-
-  logger.info('Registration completed', { registrationId: registration.id, userId: profile.id });
-  return { status: RegistrationStatus.VERIFIED, user: toPublicUser(profile), session };
+  return { status: RegistrationStatus.PENDING, resendAvailableInSec: resendWaitSec(registration) };
 }
 
-/** Step 3 — send a fresh verification link. */
+/** Step 4 — send a fresh verification link. */
 export async function resend(registrationId, pollSecret) {
   const registration = await loadOwned(registrationId, pollSecret);
   if (registration.status !== RegistrationStatus.PENDING || isExpired(registration)) {
@@ -161,10 +177,11 @@ export async function resend(registrationId, pollSecret) {
   const wait = resendWaitSec(registration);
   if (wait > 0) throw Errors.rateLimited(wait);
 
-  await sendVerificationEmail(registration.email, registration.full_name);
   const updated = await registrations.update(registration.id, {
+    verification_token_hash: await emailNewLink({ email: registration.email, name: registration.full_name }),
     last_sent_at: new Date().toISOString(),
     send_count: registration.send_count + 1,
+    expires_at: newExpiry().toISOString(),
   });
 
   logger.info('Verification email re-sent', { registrationId: updated.id, sendCount: updated.send_count });

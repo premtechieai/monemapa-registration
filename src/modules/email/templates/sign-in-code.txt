@@ -1,0 +1,9 @@
+Your {{ appName }} sign-in code
+
+{{ code }}
+
+Enter this code in {{ appName }} to sign in as {{ email }}.
+It expires in {{ codeTtlMinutes }} minutes and works once. Requesting a new code cancels this one.
+
+Didn't try to sign in? You can ignore this email; nobody can sign in without this code.
+Never share it with anyone, including {{ appName }} staff.

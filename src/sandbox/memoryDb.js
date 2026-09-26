@@ -17,11 +17,17 @@ const clone = (v) => structuredClone(v);
 
 /**
  * Per-table column defaults and unique constraints, mirroring
- * supabase/migrations/001_registration_module.sql.
+ * supabase/migrations/001 and 002.
  */
 const SCHEMA = {
   profiles: {
-    defaults: () => ({ status: 'ACTIVE', registered_at: nowIso(), last_login_at: null, updated_at: nowIso() }),
+    defaults: () => ({
+      id: crypto.randomUUID(),
+      status: 'ACTIVE',
+      registered_at: nowIso(),
+      last_login_at: null,
+      updated_at: nowIso(),
+    }),
     unique: [{ cols: ['id'] }, { cols: ['email'] }],
     touchUpdatedAt: true,
   },
@@ -29,18 +35,28 @@ const SCHEMA = {
     defaults: () => ({
       id: crypto.randomUUID(),
       status: 'PENDING',
+      user_id: null,
+      verification_token_hash: null,
       last_sent_at: nowIso(),
       send_count: 1,
       verified_at: null,
       session_issued_at: null,
       created_at: nowIso(),
     }),
-    // registrations_one_pending_per_email (partial unique index)
-    unique: [{ cols: ['id'] }, { cols: ['email'], where: (r) => r.status === 'PENDING' }],
+    unique: [
+      { cols: ['id'] },
+      // registrations_one_pending_per_email (partial unique index)
+      { cols: ['email'], where: (r) => r.status === 'PENDING' },
+      { cols: ['verification_token_hash'], where: (r) => r.verification_token_hash != null },
+    ],
   },
   otp_challenges: {
     defaults: () => ({ id: crypto.randomUUID(), consumed_at: null, revoked_at: null, created_at: nowIso() }),
     unique: [{ cols: ['id'] }],
+  },
+  sessions: {
+    defaults: () => ({ id: crypto.randomUUID(), created_at: nowIso(), revoked_at: null }),
+    unique: [{ cols: ['id'] }, { cols: ['token_hash'] }],
   },
 };
 

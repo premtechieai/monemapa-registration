@@ -6,10 +6,16 @@ import { unwrap } from '../../lib/db.js';
 
 const TABLE = 'otp_challenges';
 
-export async function create({ userId, email, attemptsLeft, expiresAt }) {
+export async function create({ userId, email, codeHash, attemptsLeft, expiresAt }) {
   const result = await db
     .from(TABLE)
-    .insert({ user_id: userId, email, attempts_left: attemptsLeft, expires_at: expiresAt.toISOString() })
+    .insert({
+      user_id: userId,
+      email,
+      code_hash: codeHash,
+      attempts_left: attemptsLeft,
+      expires_at: expiresAt.toISOString(),
+    })
     .select('*')
     .single();
   return unwrap(result, TABLE);
@@ -42,8 +48,13 @@ export async function revokeOpenForEmail(email) {
   unwrap(result, TABLE);
 }
 
+/** Revoke one challenge (e.g. its email could not be sent). */
+export async function revoke(id) {
+  unwrap(await db.from(TABLE).update({ revoked_at: new Date().toISOString() }).eq('id', id), TABLE);
+}
+
 /**
- * Atomically spend one attempt (see spend_otp_attempt in the migration).
+ * Atomically spend one attempt (see spend_otp_attempt in migration 001).
  * @returns {Promise<number>} attempts left afterwards, or -1 if none could be spent.
  */
 export async function spendAttempt(id) {

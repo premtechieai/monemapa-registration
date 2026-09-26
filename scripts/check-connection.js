@@ -1,149 +1,137 @@
 /**
- * Supabase connection check — `npm run check`.
+ * Connection check — `npm run check` (add `-- --send-test=you@example.com`
+ * to also send a real test email).
  *
- * Verifies, without sending any email or creating any data:
+ * Verifies, without creating any data:
  *   1. secrets/.env is complete (no placeholders)
- *   2. the Supabase project is reachable and the anon key is accepted
- *   3. the two keys are the right way round (anon vs service_role)
- *   4. the service_role key can use the Auth admin API
- *   5. the migration has been run (tables + spend_otp_attempt function)
- *   6. Row Level Security keeps the tables private from the anon key
- *   7. the Email sign-in provider is enabled
- * Then lists the dashboard settings that can only be checked by hand.
+ *   2. the Supabase database is reachable with the service_role key
+ *   3. migrations 001 and 002 have been run (tables, columns, function)
+ *   4. the SMTP server accepts a connection and the login
+ *   5. optionally: an email can actually be delivered
  *
  * Secrets are never printed. Exits with code 1 if any check fails.
  */
 
-// Always check the real Supabase setup, even if APP_MODE is set elsewhere.
+// Always check the real setup, even if APP_MODE is set elsewhere.
 process.env.APP_MODE = 'supabase';
 
 const { default: config } = await import('../src/config/index.js');
 const { loadSecrets } = await import('../src/config/secrets.js');
-const { createClient } = await import('@supabase/supabase-js');
+
+const sendTestTo = process.argv.find((a) => a.startsWith('--send-test='))?.split('=')[1];
 
 const results = [];
 const pass = (name, detail = '') => results.push({ ok: true, name, detail });
 const fail = (name, detail, fix) => results.push({ ok: false, name, detail, fix });
-const warn = (name, detail) => results.push({ ok: 'warn', name, detail });
 
-/** Report a key's role from its format. Legacy keys are JWTs with a `role` claim. */
-function keyRole(key) {
-  if (key.startsWith('sb_publishable_')) return 'anon';
-  if (key.startsWith('sb_secret_')) return 'service_role';
+/** Antivirus HTTPS/SMTP scanning or a proxy re-signs TLS with its own root certificate. */
+const isInterceptedTls = (code) => /UNABLE_TO_VERIFY_LEAF_SIGNATURE|SELF_SIGNED_CERT_IN_CHAIN|UNABLE_TO_GET_ISSUER_CERT/.test(code ?? '');
+const TLS_FIX =
+  'Antivirus scanning or a proxy is re-signing TLS. Point NODE_EXTRA_CA_CERTS at its root certificate ' +
+  '(Norton: C:\\ProgramData\\Norton\\Antivirus\\wscert.pem) and open a new terminal. See README > Troubleshooting';
+
+async function checkDatabase() {
+  const { db } = await import('../src/lib/supabase.js');
+
+  // Tables, plus a column added by each migration so a missing 002 is caught.
+  const expectations = [
+    ['profiles', 'id, email'],
+    ['registrations', 'id, verification_token_hash, user_id'],
+    ['otp_challenges', 'id, code_hash'],
+    ['sessions', 'id, token_hash'],
+  ];
+
+  for (const [table, columns] of expectations) {
+    const { error, count } = await db.from(table).select(columns, { count: 'exact', head: true });
+    if (!error) {
+      pass(`Table ${table}`, `${count ?? 0} rows`);
+      continue;
+    }
+    const cause = error.message ?? '';
+    if (isInterceptedTls(cause) || /fetch failed/i.test(cause)) {
+      fail('Database reachable', cause, isInterceptedTls(cause) ? TLS_FIX : 'Check SUPABASE_URL and your internet connection');
+      return;
+    }
+    if (/invalid api key|jwt/i.test(cause)) {
+      fail('Database reachable', cause, 'SUPABASE_SERVICE_ROLE_KEY must be the service_role / secret key');
+      return;
+    }
+    const missing = ['42P01', '42703', 'PGRST204', 'PGRST205'].includes(error.code) || /does not exist|schema cache/i.test(cause);
+    fail(
+      `Table ${table}`,
+      missing ? `missing table or columns (${cause})` : cause,
+      'Run supabase/migrations/001_registration_module.sql and 002_app_managed_auth.sql in the SQL Editor',
+    );
+  }
+
+  const { data: spent, error: rpcError } = await db.rpc('spend_otp_attempt', {
+    p_challenge_id: '00000000-0000-0000-0000-000000000000',
+  });
+  if (rpcError) fail('Function spend_otp_attempt', rpcError.message, 'Re-run migration 001 (safe to re-run)');
+  else if (spent !== -1) fail('Function spend_otp_attempt', `unexpected result ${spent}`, 'Re-run migration 001');
+  else pass('Function spend_otp_attempt');
+}
+
+async function checkSmtp() {
+  const { mailer } = await import('../src/modules/email/mailer.js');
+  const { host, port, secure } = config.email.smtp;
+  const where = `${host}:${port} (${secure ? 'TLS' : 'STARTTLS'})`;
+
   try {
-    return JSON.parse(Buffer.from(key.split('.')[1], 'base64url').toString()).role ?? 'unknown';
-  } catch {
-    return 'unknown';
+    await mailer.verify();
+    pass('SMTP login', where);
+  } catch (err) {
+    const code = err.code ?? '';
+    let fix = 'Check email.smtp host/port/secure in config/default.json';
+    if (code === 'EAUTH') fix = 'SMTP_USER / SMTP_PASSWORD rejected (Resend: user "resend", password = API key)';
+    else if (isInterceptedTls(code) || isInterceptedTls(err.message)) fix = TLS_FIX;
+    else if (['ETIMEDOUT', 'ECONNECTION', 'ESOCKET'].includes(code)) {
+      fix = `Could not reach ${where}. Port blocked by a firewall/ISP? Try port 587 with "secure": false`;
+    }
+    fail('SMTP login', `${where}: ${err.response ?? err.message}`, fix);
+    return;
+  }
+
+  if (!sendTestTo) return;
+  try {
+    await mailer.send({
+      to: sendTestTo,
+      subject: `${config.app.name} SMTP test`,
+      text: `This is a test email from the ${config.app.name} connection check. SMTP delivery works.`,
+      html: `<p>This is a test email from the <strong>${config.app.name}</strong> connection check. SMTP delivery works.</p>`,
+    });
+    pass('Test email sent', `to ${sendTestTo} from ${config.email.from.address}`);
+  } catch (err) {
+    fail(
+      'Test email sent',
+      err.response ?? err.message,
+      `The server refused the message: is the sender ${config.email.from.address} allowed/verified with your provider?`,
+    );
   }
 }
 
 async function run() {
-  // 1. Secrets ----------------------------------------------------------------
-  let secrets;
   try {
-    secrets = loadSecrets({ sandbox: false });
-    pass('Secrets file', 'all 4 values present, no placeholders');
+    loadSecrets({ sandbox: false });
+    pass('Secrets file', 'all values present, no placeholders');
   } catch (err) {
-    fail('Secrets file', err.message.split('\n').slice(1, -2).join('; ').trim(), 'Fill in secrets/.env');
+    fail('Secrets file', err.message.split('\n').slice(1, -2).join('; ').trim(), 'Fill in secrets/.env (see secrets/.env.example)');
     return; // nothing else can run
   }
-
-  const url = secrets.SUPABASE_URL.replace(/\/$/, '');
-  const serverAuth = { persistSession: false, autoRefreshToken: false };
-  const service = createClient(url, secrets.SUPABASE_SERVICE_ROLE_KEY, { auth: serverAuth });
-  const anon = createClient(url, secrets.SUPABASE_ANON_KEY, { auth: serverAuth });
-
-  // 2. Reachability + anon key -----------------------------------------------------
-  try {
-    const res = await fetch(`${url}/auth/v1/settings`, { headers: { apikey: secrets.SUPABASE_ANON_KEY } });
-    if (res.status === 401 || res.status === 403) {
-      fail('Anon key', `Supabase rejected the key (HTTP ${res.status})`, 'Copy the anon/publishable key again from Project Settings > API Keys');
-    } else if (!res.ok) {
-      fail('Project reachable', `HTTP ${res.status} from ${url}`, 'Check SUPABASE_URL (Project Settings > Data API > Project URL)');
-    } else {
-      pass('Project reachable', url);
-      const settings = await res.json();
-      // 7. Email provider
-      if (settings.external?.email) pass('Email provider enabled');
-      else fail('Email provider enabled', 'Email sign-in is disabled', 'Authentication > Sign In / Providers > enable Email');
-      if (settings.mailer_autoconfirm) {
-        warn('Confirm email', '"Confirm email" is OFF; invite links still verify, but consider turning it on');
-      }
-    }
-  } catch (err) {
-    fail('Project reachable', `network error: ${err.cause?.code ?? err.message}`, 'Check SUPABASE_URL and your internet connection');
-    return;
-  }
-
-  // 3. Keys the right way round ----------------------------------------------------
-  const anonRole = keyRole(secrets.SUPABASE_ANON_KEY);
-  const serviceRole = keyRole(secrets.SUPABASE_SERVICE_ROLE_KEY);
-  if (anonRole === 'service_role') {
-    fail('Key roles', 'SUPABASE_ANON_KEY holds the service_role key', 'Swap the two keys in secrets/.env');
-  } else if (serviceRole === 'anon') {
-    fail('Key roles', 'SUPABASE_SERVICE_ROLE_KEY holds the anon key', 'Use the service_role/secret key');
-  } else {
-    pass('Key roles', `anon=${anonRole}, service=${serviceRole}`);
-  }
-
-  // 4. Service role → Auth admin API ---------------------------------------------------
-  const { error: adminError } = await service.auth.admin.listUsers({ page: 1, perPage: 1 });
-  if (adminError) {
-    fail('Auth admin API', `${adminError.status ?? ''} ${adminError.message}`.trim(), 'SUPABASE_SERVICE_ROLE_KEY must be the service_role/secret key');
-  } else {
-    pass('Auth admin API', 'service_role key accepted');
-  }
-
-  // 5. Migration: tables and function -----------------------------------------------------
-  let tablesOk = true;
-  for (const table of ['profiles', 'registrations', 'otp_challenges']) {
-    const { error, count } = await service.from(table).select('*', { count: 'exact', head: true });
-    if (error) {
-      tablesOk = false;
-      const missing = ['42P01', 'PGRST205'].includes(error.code) || /does not exist|schema cache/i.test(error.message);
-      fail(`Table ${table}`, missing ? 'not found' : error.message, 'Run supabase/migrations/001_registration_module.sql in the SQL Editor');
-    } else {
-      pass(`Table ${table}`, `${count ?? 0} rows`);
-    }
-  }
-
-  const { data: spent, error: rpcError } = await service.rpc('spend_otp_attempt', {
-    p_challenge_id: '00000000-0000-0000-0000-000000000000',
-  });
-  if (rpcError) fail('Function spend_otp_attempt', rpcError.message, 'Run the migration SQL again (it is safe to re-run)');
-  else if (spent !== -1) fail('Function spend_otp_attempt', `unexpected result ${spent}`, 'Re-run the migration SQL');
-  else pass('Function spend_otp_attempt');
-
-  // 6. RLS: anon must not read app tables ------------------------------------------------------
-  if (tablesOk) {
-    const { data, error } = await anon.from('profiles').select('id').limit(1);
-    if (!error && data?.length) {
-      fail('Row Level Security', 'anon key can read profiles', 'Re-run the migration (it enables RLS)');
-    } else {
-      pass('Row Level Security', 'tables are private to the server');
-    }
-  }
+  await checkDatabase();
+  await checkSmtp();
 }
 
 await run();
 
-// --- Report ----------------------------------------------------------------------------------
-const icon = { true: 'PASS', false: 'FAIL', warn: 'WARN' };
-console.log(`\nSupabase connection check (${config.app.name})\n`);
+// --- Report ------------------------------------------------------------------
+console.log(`\n${config.app.name} connection check\n`);
 for (const r of results) {
-  console.log(`  [${icon[r.ok]}] ${r.name}${r.detail ? ` - ${r.detail}` : ''}`);
+  console.log(`  [${r.ok ? 'PASS' : 'FAIL'}] ${r.name}${r.detail ? ` - ${r.detail}` : ''}`);
   if (r.fix) console.log(`         fix: ${r.fix}`);
 }
 
-const failed = results.filter((r) => r.ok === false).length;
-console.log(`
-Check these by hand in the Supabase dashboard (they can't be read via the API):
-  - Authentication > URL Configuration: Site URL = ${config.app.baseUrl}
-    and Redirect URLs include ${config.app.baseUrl}${config.routes.verified}
-  - Authentication > Email Templates > Magic Link: body contains {{ .Token }}
-  - Authentication > Email Templates > Invite user: body contains {{ .ConfirmationURL }}
-  - Authentication > Sign In / Providers > Email: OTP length = ${config.otp.length}, expiry >= ${config.otp.ttlSec}s
-  - Authentication > SMTP Settings: custom SMTP (built-in mailer only reaches team members)
-`);
-console.log(failed ? `${failed} check(s) failed.\n` : 'All automated checks passed. Next: npm run dev\n');
+const failed = results.filter((r) => !r.ok).length;
+if (!sendTestTo && !failed) console.log('\nTip: npm run check -- --send-test=you@example.com   sends a real test email.');
+console.log(failed ? `\n${failed} check(s) failed.\n` : '\nAll checks passed. Next: npm run dev\n');
 process.exitCode = failed ? 1 : 0;

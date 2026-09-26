@@ -6,6 +6,7 @@ import { db } from '../../lib/supabase.js';
 import { unwrap } from '../../lib/db.js';
 
 const TABLE = 'profiles';
+const UNIQUE_VIOLATION = '23505';
 
 export async function findByEmail(email) {
   return unwrap(await db.from(TABLE).select('*').eq('email', email).maybeSingle(), TABLE);
@@ -16,15 +17,13 @@ export async function findById(id) {
 }
 
 /**
- * Create the profile for a newly verified user. Idempotent: if two status
- * polls race, the second insert is ignored and the existing row returned.
+ * Create the profile for a newly verified user. If a profile with this email
+ * already exists (e.g. a double-clicked link), that one is returned instead.
  */
-export async function createFromRegistration({ id, email, fullName }) {
-  const result = await db
-    .from(TABLE)
-    .upsert({ id, email, full_name: fullName }, { onConflict: 'id', ignoreDuplicates: true });
-  unwrap(result, TABLE);
-  return findById(id);
+export async function create({ email, fullName }) {
+  const { data, error } = await db.from(TABLE).insert({ email, full_name: fullName }).select('*').single();
+  if (error?.code === UNIQUE_VIOLATION) return findByEmail(email);
+  return unwrap({ data, error }, TABLE);
 }
 
 export async function touchLastLogin(id) {

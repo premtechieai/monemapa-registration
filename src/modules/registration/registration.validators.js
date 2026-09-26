@@ -19,3 +19,7 @@ export const registerSchema = z.object({
 export const registrationIdParams = z.object({
   id: uuidParam,
 });
+
+export const verifyEmailSchema = z.object({
+  token: z.string({ required_error: 'Missing verification token.' }).trim().min(20, 'Invalid verification token.').max(200),
+});

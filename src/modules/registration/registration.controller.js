@@ -8,7 +8,7 @@ import {
   SessionMethod,
   clearRegistrationCookie,
   setRegistrationCookie,
-  setSessionCookies,
+  startSession,
 } from '../auth/session.js';
 
 /** POST /registrations  { name, email, termsAccepted } → 202 PENDING */
@@ -18,14 +18,20 @@ export async function register(req, res) {
   res.status(202).json(registration);
 }
 
+/** POST /verifications  { token } → 200 VERIFIED (the emailed link was opened) */
+export async function verifyEmail(req, res) {
+  const result = await registrationService.verifyEmail(req.body.token);
+  res.status(200).json(result);
+}
+
 /** GET /registrations/:id/status → 200 { status, user? } */
 export async function getStatus(req, res) {
   const pollSecret = req.cookies[COOKIES.registration];
-  const { session, ...result } = await registrationService.getStatus(req.params.id, pollSecret);
+  const { startSessionFor, ...result } = await registrationService.getStatus(req.params.id, pollSecret);
 
-  if (session) {
+  if (startSessionFor) {
     // Registration just completed: sign the user in and drop the poll cookie.
-    setSessionCookies(res, session, SessionMethod.EMAIL_VERIFICATION);
+    await startSession(res, startSessionFor, SessionMethod.EMAIL_VERIFICATION);
     clearRegistrationCookie(res);
   }
   // Status changes over time — never let a proxy or the browser cache it.

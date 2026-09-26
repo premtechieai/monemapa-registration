@@ -4,37 +4,41 @@
  *   GET  /sandbox              inspector page: inbox, database tables, event log
  *   GET  /sandbox/api/state    JSON snapshot the inspector polls
  *   POST /sandbox/api/reset    wipe and re-seed all sandbox data
- *   GET  /sandbox/auth/verify  target of the emailed verification link —
- *                              plays the part of Supabase's /verify endpoint
+ *
+ * Activation links in the sandbox inbox point at the real /verified page, so
+ * the verification path is exactly the one used in production.
  */
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express, { Router } from 'express';
-import config from '../config/index.js';
-import { confirmEmailByToken } from './fakeAuth.js';
+import { sha256 } from '../lib/crypto.js';
 import { getState, reset } from './store.js';
 
 const UI_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'ui');
 const router = Router();
 
-/** Label each verification email as active / used / replaced for the inspector. */
+/** Label each activation email as active / used / replaced / expired for the inspector. */
 function linkStatus(mail, state) {
-  const user = state.authUsers.find((u) => u.email === mail.to);
-  if (user?.confirmation?.tokenHash === mail.tokenHash) return 'active';
-  return user?.email_confirmed_at ? 'used' : 'replaced';
+  const token = new URLSearchParams(new URL(mail.link).hash.slice(1)).get('token');
+  const tokenHash = token && sha256(token);
+  const current = state.tables.registrations.find((r) => r.verification_token_hash === tokenHash);
+  if (current) return new Date(current.expires_at) > new Date() ? 'active' : 'expired';
+  const registered = state.tables.profiles.some((p) => p.email === mail.to);
+  return registered ? 'used' : 'replaced';
 }
 
 function snapshot() {
   const state = getState();
+  const hideSecrets = ({ poll_secret_hash, verification_token_hash, code_hash, token_hash, ...row }) => row;
   return {
-    inbox: state.inbox.map(({ tokenHash, ...mail }) => ({
+    inbox: state.inbox.map(({ html, ...mail }) => ({
       ...mail,
-      linkStatus: mail.kind === 'verify' ? linkStatus({ tokenHash, ...mail }, state) : undefined,
+      linkStatus: mail.kind === 'verify' ? linkStatus(mail, state) : undefined,
     })),
     profiles: state.tables.profiles,
-    // The poll secret hash is irrelevant for testing; keep the table readable.
-    registrations: state.tables.registrations.map(({ poll_secret_hash, ...r }) => r),
-    otpChallenges: state.tables.otp_challenges,
+    registrations: state.tables.registrations.map(hideSecrets),
+    otpChallenges: state.tables.otp_challenges.map(hideSecrets),
+    sessions: state.tables.sessions.map(hideSecrets),
     events: state.events.slice(0, 100),
   };
 }
@@ -44,23 +48,18 @@ router.get('/sandbox', (_req, res) => res.sendFile(path.join(UI_DIR, 'sandbox.ht
 
 router.get('/sandbox/api/state', (_req, res) => res.set('Cache-Control', 'no-store').json(snapshot()));
 
+// Rendered HTML of one inbox message, to preview the real template.
+router.get('/sandbox/mail/:id', (req, res) => {
+  const mail = getState().inbox.find((m) => m.id === req.params.id);
+  if (!mail) return res.status(404).send('Message not found');
+  // Emails rely on inline styles; allow those (and nothing executable) for this page only.
+  res.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; img-src data: https:");
+  return res.type('html').send(mail.html);
+});
+
 router.post('/sandbox/api/reset', (_req, res) => {
   reset();
   res.status(204).end();
-});
-
-router.get('/sandbox/auth/verify', (req, res) => {
-  // Only ever redirect back into this app (no open redirect).
-  const fallback = `${config.app.baseUrl}${config.routes.verified}`;
-  const target = String(req.query.redirect_to ?? '');
-  const redirectTo = target.startsWith(config.app.baseUrl) ? target : fallback;
-
-  const result = confirmEmailByToken(req.query.token);
-  if (result.ok) return res.redirect(`${redirectTo}#type=invite`);
-
-  // Same fragment format Supabase uses for a bad or expired link.
-  const params = new URLSearchParams({ error: 'access_denied', error_code: 'otp_expired', error_description: result.reason });
-  return res.redirect(`${redirectTo}#${params}`);
 });
 
 export default router;

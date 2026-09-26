@@ -1,12 +1,10 @@
 /**
- * Sandbox state: everything Supabase would normally hold, kept in memory and
+ * Sandbox state: the database rows and "sent" emails, kept in memory and
  * mirrored to a JSON file (config.sandbox.stateFile) so data survives the
  * restarts `node --watch` does on every code change.
  *
- *   tables      public.profiles / registrations / otp_challenges rows
- *   authUsers   what Supabase Auth keeps in auth.users (+ pending tokens)
- *   sessions    issued access/refresh tokens
- *   inbox       every email "sent" (verification links, sign-in codes)
+ *   tables      profiles / registrations / otp_challenges / sessions rows
+ *   inbox       every email "sent" (activation links, sign-in codes)
  *   events      human-readable activity log for the /sandbox page
  *
  * SANDBOX ONLY — never loaded when app.mode is "supabase".
@@ -20,14 +18,15 @@ import logger from '../lib/logger.js';
 // SANDBOX_STATE_FILE lets tests use a throwaway file.
 const STATE_FILE = path.resolve(process.cwd(), process.env.SANDBOX_STATE_FILE ?? config.sandbox.stateFile);
 const MAX_EVENTS = 200;
+// Bump when the stored shape changes; older files are discarded and re-seeded.
+const STATE_VERSION = 2;
 
 const nowIso = () => new Date().toISOString();
 
 function emptyState() {
   return {
-    tables: { profiles: [], registrations: [], otp_challenges: [] },
-    authUsers: [],
-    sessions: [],
+    version: STATE_VERSION,
+    tables: { profiles: [], registrations: [], otp_challenges: [], sessions: [] },
     inbox: [],
     events: [],
   };
@@ -36,10 +35,16 @@ function emptyState() {
 /** Pre-registered users, so the "email already registered" path can be tried immediately. */
 function seed(state) {
   for (const { email, fullName } of config.sandbox.seedUsers) {
-    const id = crypto.randomUUID();
     const created = new Date(Date.now() - 12 * 864e5).toISOString();
-    state.authUsers.push({ id, email, email_confirmed_at: created, created_at: created, last_sign_in_at: null, user_metadata: { full_name: fullName } });
-    state.tables.profiles.push({ id, email, full_name: fullName, status: 'ACTIVE', registered_at: created, last_login_at: null, updated_at: created });
+    state.tables.profiles.push({
+      id: crypto.randomUUID(),
+      email,
+      full_name: fullName,
+      status: 'ACTIVE',
+      registered_at: created,
+      last_login_at: null,
+      updated_at: created,
+    });
   }
   state.events.unshift({ at: nowIso(), type: 'sandbox.seeded', detail: config.sandbox.seedUsers.map((u) => u.email).join(', ') });
   return state;
@@ -47,10 +52,12 @@ function seed(state) {
 
 function loadFromDisk() {
   try {
-    return { ...emptyState(), ...JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')) };
+    const saved = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+    if (saved.version === STATE_VERSION) return saved;
   } catch {
-    return seed(emptyState()); // first run, or file unreadable
+    /* first run, or file unreadable */
   }
+  return seed(emptyState());
 }
 
 let state = loadFromDisk();
@@ -89,7 +96,7 @@ export function recordEvent(type, detail = '', isError = false) {
 export function deliverMail(mail) {
   const message = { id: crypto.randomUUID(), at: nowIso(), ...mail };
   state.inbox.unshift(message);
-  persist();
+  recordEvent(`email.${mail.kind === 'otp' ? 'sign_in_code' : 'activation_link'}`, `sent to ${mail.to}`);
 
   const payload = mail.kind === 'otp' ? `code ${mail.code}` : mail.link;
   logger.info(`[sandbox] MAIL "${mail.subject}" to ${mail.to}: ${payload}`);
