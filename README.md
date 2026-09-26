@@ -116,7 +116,10 @@ When the sandbox flow looks right, set up Supabase below and switch to `npm run 
      <p>Click to verify your email and finish creating your MoneMapa account:</p>
      <p><a href="{{ .ConfirmationURL }}">Verify email</a></p>
      ```
-   - **Magic Link**: this is the sign-in code email. **It must include `{{ .Token }}`** (the default template only has a link). E.g. subject `Your sign-in code`, body
+   - **Magic Link**: despite the name, this is the **sign-in code (OTP) email** that returning users receive.
+     **Replace the default body.** The default only contains a link (`{{ .ConfirmationURL }}`), so users get an
+     "activation link" instead of a code. The body must include `{{ .Token }}` and should **not** include
+     `{{ .ConfirmationURL }}`. Suggested subject: `Your sign-in code`. Body:
      ```html
      <h2>Your sign-in code</h2>
      <p>Enter this code to sign in: <strong style="font-size:24px;letter-spacing:4px">{{ .Token }}</strong></p>

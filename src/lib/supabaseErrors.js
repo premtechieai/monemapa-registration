@@ -23,6 +23,15 @@ export function mapAuthError(error, context, fallbackRetrySec = 60) {
     return Errors.emailQuotaExceeded();
   }
 
+  // Supabase accepted the request but its mail server (SMTP) refused to send.
+  if (/error sending .*email/i.test(error.message ?? '')) {
+    logger.error(`Supabase could not send email during ${context}`, {
+      message: error.message,
+      fix: 'Check Authentication > SMTP Settings (host, port, username, app password, sender) and Authentication > Logs',
+    });
+    return Errors.emailSendFailed();
+  }
+
   if (error.status === 429 || String(error.code).startsWith('over_')) {
     logger.warn(`Supabase rate limit during ${context}`, { code: error.code });
     return Errors.rateLimited(fallbackRetrySec);
