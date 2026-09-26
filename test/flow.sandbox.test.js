@@ -11,6 +11,7 @@ import fs from 'node:fs';
 
 // Must be set before the app (and its config) is imported.
 process.env.APP_MODE = 'sandbox';
+process.env.STUB_ON = 'false'; // live email flow, regardless of the developer's secrets/.env
 process.env.SANDBOX_STATE_FILE = path.join(os.tmpdir(), `monemapa-sandbox-test-${process.pid}.json`);
 
 const { createApp } = await import('../src/app.js');

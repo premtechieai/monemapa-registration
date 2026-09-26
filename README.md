@@ -169,6 +169,19 @@ login.
 **Troubleshooting:** `Invalid or missing secrets … still has its placeholder value` means `secrets/.env` still has
 template values. Fill them in, or use `npm run sandbox` until you have them.
 
+## Stub mode (`STUB_ON`)
+
+For when the email server isn't available. Set in `secrets/.env` (or as an environment variable):
+
+| `STUB_ON` | Registration | Sign-in |
+|---|---|---|
+| `true` | No email sent; the account **auto-verifies after 5 s** (`stub.autoVerifyAfterSec`) | No email sent; the code is always **`123456`** (`stub.otpCode`) |
+| `false` (default) | Live activation email over SMTP | Live one-time code over SMTP |
+
+Everything else stays real: database writes, sessions, code expiry and the attempt limit. `SMTP_USER` /
+`SMTP_PASSWORD` are optional while it's on, and the UI shows a "Stub mode" badge. The server **refuses to start**
+with `STUB_ON=true` when `NODE_ENV=production`, because a fixed code would let anyone sign in.
+
 ## Email templates
 
 The two emails live in the app, in `src/modules/email/templates/`, each as HTML plus a plain-text fallback:

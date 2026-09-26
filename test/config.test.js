@@ -60,6 +60,13 @@ test('loadSecrets in sandbox mode needs no Supabase keys and defaults the cookie
   assert.equal(secrets.SUPABASE_URL, undefined);
 });
 
+test('STUB_ON toggles stub mode and rejects bad values', () => {
+  assert.equal(loadConfig({}).stub.enabled, false);
+  assert.equal(loadConfig({ STUB_ON: 'true' }).stub.enabled, true);
+  assert.equal(loadConfig({ STUB_ON: 'false' }).stub.enabled, false);
+  assert.throws(() => loadConfig({ STUB_ON: 'maybe' }), /STUB_ON must be true or false/);
+});
+
 test('loadConfig switches to sandbox mode via APP_MODE', () => {
   const config = loadConfig({ APP_MODE: 'sandbox' });
   assert.equal(config.isSandbox, true);

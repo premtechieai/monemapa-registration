@@ -55,6 +55,11 @@
       "signInCode": "{{ code }} is your {{ appName }} sign-in code"
     }
   },
+  "stub": {
+    "enabled": false,
+    "autoVerifyAfterSec": 5,
+    "otpCode": "123456"
+  },
   "rateLimit": {
     "windowMin": 15,
     "maxRequests": 60

@@ -42,8 +42,17 @@ async function boot() {
     return;
   }
 
-  // Local sandbox: nothing is really emailed, so point testers at the mock inbox.
-  if (config.sandbox) {
+  // Stub mode: no emails are sent, so tell testers how to get through.
+  if (config.stub?.enabled) {
+    document.body.append(
+      h(
+        'div',
+        { class: 'sandbox-pill', role: 'note' },
+        `Stub mode · auto-verify in ${config.stub.autoVerifyAfterSec}s · sign-in code ${config.stub.otpCode}`,
+      ),
+    );
+  } else if (config.sandbox) {
+    // Local sandbox: nothing is really emailed, so point testers at the mock inbox.
     document.body.append(
       h('a', { class: 'sandbox-pill', href: '/sandbox', target: '_blank', rel: 'noopener' }, 'Sandbox mode · Open inbox ↗'),
     );

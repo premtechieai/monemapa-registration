@@ -14,6 +14,10 @@ const publicConfig = Object.freeze({
   appName: config.app.name,
   // When true the UI shows a link to the /sandbox inspector (mock inbox).
   sandbox: config.isSandbox,
+  // Stub mode (STUB_ON=true, development only): the UI shows how to proceed.
+  stub: config.stub.enabled
+    ? { enabled: true, otpCode: config.stub.otpCode, autoVerifyAfterSec: config.stub.autoVerifyAfterSec }
+    : { enabled: false },
   apiBasePath: config.api.basePath,
   routes: config.routes,
   links: config.links,
@@ -32,7 +36,8 @@ const publicConfig = Object.freeze({
 });
 
 router.get('/app-config.json', (_req, res) => {
-  res.set('Cache-Control', 'public, max-age=300').json(publicConfig);
+  // no-cache: tiny file, and flags like STUB_ON must take effect on the next page load.
+  res.set('Cache-Control', 'no-cache').json(publicConfig);
 });
 
 export default router;

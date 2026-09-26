@@ -48,7 +48,9 @@ export async function requestOtp(email) {
   // Any earlier code for this email stops working once a new one is requested.
   await otpChallenges.revokeOpenForEmail(email);
 
-  const code = randomDigits(config.otp.length);
+  // Stub mode uses a fixed, known code (config.stub.otpCode). Everything else
+  // — hashing, expiry, attempt limit — works exactly as in live mode.
+  const code = config.stub.enabled ? config.stub.otpCode : randomDigits(config.otp.length);
   const challenge = await otpChallenges.create({
     userId: profile.id,
     email,

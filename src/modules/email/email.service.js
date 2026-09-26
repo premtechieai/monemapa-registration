@@ -16,6 +16,14 @@ import { renderEmail } from './templates.js';
 
 async function send({ to, template, subject, vars, meta }) {
   const message = { to, ...renderEmail(template, subject, { appName: config.app.name, email: to, ...vars }) };
+
+  // Stub mode (STUB_ON=true): render the email (so template errors still
+  // surface) but don't contact the mail server.
+  if (config.stub.enabled) {
+    logger.info('[stub] Email not sent (STUB_ON=true)', { template, subject: message.subject });
+    return;
+  }
+
   try {
     const { messageId } = await mailer.send(message, meta);
     logger.info('Email sent', { template, messageId });
