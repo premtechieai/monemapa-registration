@@ -179,8 +179,14 @@ For when the email server isn't available. Set in `secrets/.env` (or as an envir
 | `false` (default) | Live activation email over SMTP | Live one-time code over SMTP |
 
 Everything else stays real: database writes, sessions, code expiry and the attempt limit. `SMTP_USER` /
-`SMTP_PASSWORD` are optional while it's on, and the UI shows a "Stub mode" badge. The server **refuses to start**
-with `STUB_ON=true` when `NODE_ENV=production`, because a fixed code would let anyone sign in.
+`SMTP_PASSWORD` are optional while it's on, and the UI shows a "Stub mode" badge.
+
+> ⚠️ `STUB_ON=true` is currently **allowed in production** (temporary, while the email server is unavailable). Anyone
+> who knows an account's email can sign in with `123456`, so the server logs an error-level warning at startup.
+> Set it back to `false` (or remove it) as soon as SMTP works.
+
+**Deploying on Vercel:** set `STUB_ON` (and the secrets) under *Project → Settings → Environment Variables*, then
+redeploy. `secrets/.env` isn't in the repository, so Vercel never sees it.
 
 ## Email templates
 
