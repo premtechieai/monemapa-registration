@@ -41,13 +41,13 @@
   "email": {
     "from": {
       "name": "MoneMapa",
-      "address": "ContactHackathon@resend.dev"
+      "address": "ContactHackathon@mail.outskill.com"
     },
     "replyTo": "",
     "smtp": {
       "host": "smtp.resend.com",
-      "port": 465,
-      "secure": true,
+      "port": 587,
+      "secure": false,
       "connectionTimeoutMs": 10000
     },
     "subjects": {

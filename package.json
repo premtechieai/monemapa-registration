@@ -5,14 +5,14 @@
   "type": "module",
   "main": "src/server.js",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.15"
   },
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "node --watch-path=src --watch-path=config src/server.js",
-    "sandbox": "node --watch-path=src --watch-path=config src/sandbox.js",
-    "check": "node scripts/check-connection.js",
-    "test": "node --test \"test/**/*.test.js\""
+    "start": "node --use-system-ca src/server.js",
+    "dev": "node --use-system-ca --watch-path=src --watch-path=config src/server.js",
+    "sandbox": "node --use-system-ca --watch-path=src --watch-path=config src/sandbox.js",
+    "check": "node --use-system-ca scripts/check-connection.js",
+    "test": "node --use-system-ca --test \"test/**/*.test.js\""
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",

@@ -22,7 +22,7 @@ Sign in (email) ──► Enter code ──────────────�
 
 ## Tech stack
 
-- **Node.js 20+**, Express 4, ES modules
+- **Node.js 22.15+**, Express 4, ES modules
 - **Supabase**: used only as the **Postgres database** (service-role key, server-side). Supabase Auth is not used.
 - **Nodemailer** → your SMTP provider (Resend, Gmail, Brevo, SendGrid, SES…) for both emails
 - **zod** request validation · **helmet** security headers and CSP · **express-rate-limit**
@@ -119,11 +119,13 @@ Any SMTP provider works. Server settings go in `config/default.json` → `email.
 
 | Provider | `email.smtp` | `SMTP_USER` / `SMTP_PASSWORD` | Sender (`email.from.address`) |
 |---|---|---|---|
-| **Resend** (default) | `smtp.resend.com`, port `465`, `secure: true` | `resend` / your API key (`re_…`) | An address on a domain verified in Resend. `…@resend.dev` only delivers to your own Resend account email |
-| Gmail | `smtp.gmail.com`, port `465`, `secure: true` | your Gmail / a 16-char **app password** | your Gmail address |
+| **Resend** (default) | `smtp.resend.com`, port `587`, `secure: false` | `resend` / your API key (`re_…`) | An address on a domain verified in Resend. `…@resend.dev` only delivers to your own Resend account email |
+| Gmail | `smtp.gmail.com`, port `587`, `secure: false` | your Gmail / a 16-char **app password** | your Gmail address |
 | Brevo | `smtp-relay.brevo.com`, port `587`, `secure: false` | Brevo SMTP login / SMTP key | a verified sender |
 
-Port `587` with `secure: false` uses STARTTLS; the app always requires TLS before sending the login.
+Port `587` with `secure: false` uses STARTTLS; the app always requires TLS before sending the login. It's the
+default because antivirus "Mail Shield" features (e.g. Norton) intercept port `465` with a certificate they
+deliberately mark untrusted. Resend also offers `2465` (TLS) and `2587` (STARTTLS).
 
 ### 3. Secrets
 
@@ -151,14 +153,11 @@ npm test                                        # unit + end-to-end (sandbox) te
 npm start                                       # production-style start (set NODE_ENV=production)
 ```
 
-**Troubleshooting: `UNABLE_TO_VERIFY_LEAF_SIGNATURE` / `SELF_SIGNED_CERT_IN_CHAIN`.** Antivirus HTTPS/email scanning
-(for example Norton Web/Mail Shield) or a corporate proxy is re-signing TLS traffic. Browsers trust it through the
-Windows certificate store, but Node.js doesn't. Tell Node to trust that root certificate (Norton's is shown here),
-then open a **new** terminal:
-
-```powershell
-[Environment]::SetEnvironmentVariable('NODE_EXTRA_CA_CERTS', 'C:\ProgramData\Norton\Antivirus\wscert.pem', 'User')
-```
+**Troubleshooting: `fetch failed` / `unable to verify the first certificate` / `UNABLE_TO_VERIFY_LEAF_SIGNATURE`.**
+Antivirus HTTPS/email scanning (for example Norton Web/Mail Shield) or a corporate proxy is re-signing TLS traffic.
+The npm scripts start Node with `--use-system-ca` (Node 22.15+), so Node trusts the Windows certificate store the
+same way browsers do; always start the app through `npm run …`. If email still fails, the scanner is using an
+*untrusted* certificate for that port: use SMTP port `587` (the default), or exclude `node.exe` from the scan.
 
 Never work around it with `NODE_TLS_REJECT_UNAUTHORIZED=0`, which turns off certificate checking entirely.
 
@@ -207,9 +206,9 @@ All URLs, routes, timings and email settings live in `config/*.json`. The browse
 | `otp.resendCooldownSec` | `60` | Min gap between codes |
 | `session.cookiePrefix` | `mm` | Cookie name prefix |
 | `session.ttlDays` | `30` | Session lifetime |
-| `email.from.name` / `.address` | `MoneMapa` / `ContactHackathon@resend.dev` | Sender shown to recipients |
+| `email.from.name` / `.address` | `MoneMapa` / `ContactHackathon@mail.outskill.com` | Sender shown to recipients |
 | `email.replyTo` | empty | Optional Reply-To address |
-| `email.smtp.host` / `.port` / `.secure` | `smtp.resend.com` / `465` / `true` | SMTP server |
+| `email.smtp.host` / `.port` / `.secure` | `smtp.resend.com` / `587` / `false` | SMTP server |
 | `email.smtp.connectionTimeoutMs` | `10000` | Give up connecting after this long |
 | `email.subjects.verifyEmail` / `.signInCode` | see file | Subject lines (placeholders allowed) |
 | `rateLimit.windowMin` / `maxRequests` | `15` / `60` | Per-IP limit on auth endpoints |
