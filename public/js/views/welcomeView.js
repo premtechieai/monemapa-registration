@@ -14,15 +14,18 @@ export default {
   complete: true,
   title: 'Welcome aboard',
 
-  render({ navigate }) {
+  render({ config }) {
     const user = store.get('welcomeUser');
     if (!user) return { redirect: 'login' };
 
     const firstName = user.fullName.split(/\s+/)[0];
     const cta = submitButton({ label: 'Go to dashboard', loadingLabel: 'Opening…', type: 'button' });
     cta.el.addEventListener('click', () => {
+      cta.setLoading(true);
       store.set('welcomeUser', null);
-      navigate('dashboard');
+      // Full page load: the dashboard is a separate page; the session cookie
+      // set when verification completed is sent along automatically.
+      location.assign(config.routes.dashboard);
     });
 
     const el = h(

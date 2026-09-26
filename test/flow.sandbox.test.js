@@ -153,6 +153,25 @@ test('full flow: register → verify link → auto sign-in → OTP sign-in → l
   assert.equal(resend.body.error.code, 'RATE_LIMITED');
 });
 
+test('dashboard page shares the login session and is protected without it', async () => {
+  // Still signed in from the previous test (one-time code session).
+  let page = await call('GET', '/dashboard');
+  assert.equal(page.status, 200);
+  assert.match(page.headers.get('content-type'), /text\/html/);
+  assert.equal(page.headers.get('cache-control'), 'no-store');
+
+  // The raw file is never served directly, only through the checked route.
+  const raw = await call('GET', '/dashboard.html');
+  assert.equal(raw.status, 302);
+  assert.equal(raw.headers.get('location'), '/dashboard');
+
+  // After signing out, the dashboard redirects to sign-in.
+  await call('POST', '/v1/auth/logout', {});
+  page = await call('GET', '/dashboard');
+  assert.equal(page.status, 302);
+  assert.equal(page.headers.get('location'), '/login');
+});
+
 test('OTP locks after the maximum number of wrong attempts', async () => {
   // Fresh seeded user so the resend cooldown from the previous test doesn't apply.
   const otp = await call('POST', '/v1/auth/otp', { email: 'ada@example.com' });

@@ -5,8 +5,10 @@
 .page {
   min-height: 100vh;
   display: flex;
-  justify-content: center;
-  padding: 32px 16px 64px;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  padding: 24px 16px 64px;
 }
 
 .frame {
@@ -20,6 +22,14 @@
   border: 1px solid var(--color-divider);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
+  /* Inner layout follows the frame's own width (see container queries below). */
+  container: frame / inline-size;
+  transition: max-width 0.35s ease;
+}
+
+/* Desktop/Mobile preview toggle: "Mobile" narrows the frame to a phone width. */
+.frame.is-mobile {
+  max-width: 390px;
 }
 
 /* --- Header ------------------------------------------------------------- */
@@ -204,8 +214,14 @@
   max-width: 440px;
 }
 
-/* --- Tablet ------------------------------------------------------------- */
-@media (max-width: 1023px) {
+/* --- Responsive ---------------------------------------------------------------
+ * Inside the frame, layout follows the frame's width (container queries), so
+ * the preview toggle's narrow frame shows exactly what a phone gets. Page
+ * padding and the frame border follow the screen (media query at the end).
+ */
+
+/* Tablet-width frame */
+@container frame (max-width: 1023px) {
   .steps-aside {
     width: 260px;
     padding: 32px 24px;
@@ -220,20 +236,8 @@
   }
 }
 
-/* --- Mobile ------------------------------------------------------------- */
-@media (max-width: 767px) {
-  .page {
-    padding: 0;
-  }
-
-  .frame {
-    min-height: 100vh;
-    min-height: 100dvh;
-    border: 0;
-    border-radius: 0;
-    box-shadow: none;
-  }
-
+/* Phone-width frame */
+@container frame (max-width: 767px) {
   .app-header {
     padding: 14px 20px;
   }
@@ -259,8 +263,24 @@
   }
 }
 
-@media (max-width: 380px) {
+@container frame (max-width: 380px) {
   .app-header__badge-text {
     display: none;
+  }
+}
+
+/* Phone screen: the frame fills the screen edge to edge. */
+@media (max-width: 767px) {
+  .page {
+    padding: 0;
+    gap: 0;
+  }
+
+  .frame {
+    min-height: 100vh;
+    min-height: 100dvh;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
   }
 }

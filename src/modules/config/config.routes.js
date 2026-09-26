@@ -14,13 +14,11 @@ const publicConfig = Object.freeze({
   appName: config.app.name,
   // When true the UI shows a link to the /sandbox inspector (mock inbox).
   sandbox: config.isSandbox,
-  // Stub mode (STUB_ON=true, development only): the UI shows how to proceed.
-  stub: config.stub.enabled
-    ? { enabled: true, otpCode: config.stub.otpCode, autoVerifyAfterSec: config.stub.autoVerifyAfterSec }
-    : { enabled: false },
   apiBasePath: config.api.basePath,
   routes: config.routes,
   links: config.links,
+  dashboard: config.dashboard,
+  ui: config.ui,
   registration: {
     pollIntervalSec: config.registration.pollIntervalSec,
     pollTimeoutMin: config.registration.pollTimeoutMin,

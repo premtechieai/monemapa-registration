@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#8839ef">
+  <title>MoneMapa · Dashboard</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap">
+
+  <link rel="stylesheet" href="/css/tokens.css">
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/components.css">
+  <link rel="stylesheet" href="/css/dashboard.css">
+
+  <!-- Transactions data service (window.MoneMapaTx). Demo adapter: stores data in
+       this browser's localStorage; replace with the /v1/transactions API later. -->
+  <script src="/js/dashboard/transactions-service.js" defer></script>
+  <script type="module" src="/js/dashboard/main.js"></script>
+</head>
+<body class="dash">
+<div class="dash-page" id="page">
+  <!-- Desktop / Mobile preview toolbar. Filled by js/components/previewToggle.js -->
+  <div class="preview-bar" id="preview-bar" hidden></div>
+
+  <div class="dash-frame" id="frame">
+  <div class="dash-scroll">
+  <header class="dash-header">
+    <div class="dash-header__left">
+      <a class="brand" href="" data-nav="dashboard" aria-label="MoneMapa dashboard">
+        <span class="brand__mark" aria-hidden="true">M</span>
+        <span class="brand__name">Mone<span>Mapa</span></span>
+      </a>
+      <nav class="dash-nav" aria-label="Primary">
+        <a class="dash-nav__link is-active" aria-current="page" href="" data-nav="dashboard">Overview</a>
+        <a class="dash-nav__link" href="#" data-nav="transactions">Transactions</a>
+        <a class="dash-nav__link" href="#" aria-disabled="true" title="Coming soon">Budgets</a>
+        <a class="dash-nav__link" href="#" aria-disabled="true" title="Coming soon">Reports</a>
+      </nav>
+    </div>
+    <div class="dash-header__right">
+      <button type="button" class="btn btn-secondary dash-signout" id="sign-out" disabled>Sign out</button>
+      <div class="avatar" id="avatar" role="img" aria-label="Account">··</div>
+    </div>
+  </header>
+
+  <main class="dash-main" id="main" aria-busy="true">
+    <div class="dash-head">
+      <div>
+        <h1 class="dash-title" id="greeting" tabindex="-1">Loading your dashboard…</h1>
+        <p class="dash-subtitle" id="subtitle"></p>
+      </div>
+      <div class="month-picker" role="group" aria-label="Month">
+        <button type="button" class="month-picker__btn" id="prev-month" aria-label="Previous month">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+        </button>
+        <span class="month-picker__label" id="month-label" aria-live="polite"></span>
+        <button type="button" class="month-picker__btn" id="next-month" aria-label="Next month">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="alert-slot" id="error" hidden></div>
+
+    <div class="kpis" id="kpis"></div>
+
+    <div class="dash-grid">
+      <section class="card" aria-labelledby="bars-h">
+        <div class="card__head">
+          <div><h2 class="card__title" id="bars-h">Income vs spending</h2><span class="card__sub">Last 6 months</span></div>
+          <div class="legend-inline">
+            <span><i class="swatch" data-color="#40a02b"></i>Income</span>
+            <span><i class="swatch" data-color="#8839ef"></i>Spending</span>
+          </div>
+        </div>
+        <div id="bar-chart"></div>
+      </section>
+
+      <section class="card" aria-labelledby="cat-h">
+        <div class="card__head">
+          <div><h2 class="card__title" id="cat-h">Spending by category</h2><span class="card__sub" data-month-label></span></div>
+        </div>
+        <div id="categories"></div>
+      </section>
+    </div>
+
+    <div class="dash-grid">
+      <section class="card" aria-labelledby="pace-h">
+        <div class="card__head">
+          <div><h2 class="card__title" id="pace-h">Spending pace</h2><span class="card__sub">Cumulative spend by day</span></div>
+          <div class="legend-inline">
+            <span><i class="swatch swatch--line"></i><span id="pace-cur"></span></span>
+            <span><i class="swatch swatch--dashed"></i><span id="pace-prev"></span></span>
+          </div>
+        </div>
+        <div id="line-chart"></div>
+        <p class="card__note" id="pace-note"></p>
+      </section>
+
+      <section class="card" aria-labelledby="src-h">
+        <div class="card__head">
+          <div><h2 class="card__title" id="src-h">Income by source</h2><span class="card__sub" data-month-label></span></div>
+        </div>
+        <div id="sources"></div>
+      </section>
+    </div>
+
+    <section class="card card--flush" aria-labelledby="recent-h">
+      <div class="card__head card__head--bar">
+        <h2 class="card__title" id="recent-h">Recent transactions</h2>
+        <a class="card__link" href="#" data-nav="transactions">View all →</a>
+      </div>
+      <div id="recent"></div>
+    </section>
+  </main>
+
+  <!-- Mobile: bottom navigation -->
+  <nav class="dash-tabbar" aria-label="Primary">
+    <a class="dash-tabbar__link is-active" aria-current="page" href="" data-nav="dashboard">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>Overview
+    </a>
+    <a class="dash-tabbar__link" href="#" data-nav="transactions">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16M7 4 3 8M7 4l4 4M17 20V4M17 20l-4-4M17 20l4-4"/></svg>Transactions
+    </a>
+    <a class="dash-tabbar__link" href="#" aria-disabled="true" title="Coming soon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3v9l6 4"/></svg>Budgets
+    </a>
+    <a class="dash-tabbar__link" href="#" aria-disabled="true" title="Coming soon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Reports
+    </a>
+  </nav>
+  </div><!-- /.dash-scroll -->
+  </div><!-- /.dash-frame -->
+</div><!-- /.dash-page -->
+</body>
+</html>

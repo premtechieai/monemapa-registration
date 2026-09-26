@@ -86,7 +86,8 @@ test('stub mode: register auto-verifies, sign in with the stub code, no emails s
   assert.equal(getState().inbox.length, 0);
 });
 
-test('stub mode is exposed to the UI via /app-config.json', async () => {
-  const res = await fetch(`${base}/app-config.json`).then((r) => r.json());
-  assert.deepEqual(res.stub, { enabled: true, otpCode: '123456', autoVerifyAfterSec: 5 });
+test('stub details are not published in /app-config.json', async () => {
+  const res = await fetch(`${base}/app-config.json`).then((r) => r.text());
+  assert.ok(!res.includes('"stub"'));
+  assert.ok(!res.includes(config.stub.otpCode));
 });

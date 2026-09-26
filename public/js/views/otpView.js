@@ -77,7 +77,11 @@ export default {
       try {
         await authService.verifyOtp(login.challengeId, value);
         store.set('login', null);
-        navigate('dashboard', { replace: true });
+        // Signed in: go to the dashboard page (configurable: routes.dashboard).
+        // replace() so Back doesn't return to the used code screen; the new
+        // session cookie from this response is sent with the page request.
+        location.replace(config.routes.dashboard);
+        return;
       } catch (err) {
         busy = false;
         submit.setLoading(false);

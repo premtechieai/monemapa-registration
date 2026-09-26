@@ -22,6 +22,13 @@
     "termsUrl": "/legal/terms.html",
     "privacyUrl": "/legal/privacy.html"
   },
+  "ui": {
+    "showPreviewToggle": true
+  },
+  "dashboard": {
+    "currency": "AED",
+    "transactionsUrl": "#"
+  },
   "registration": {
     "linkTtlHours": 24,
     "pollIntervalSec": 3,

@@ -3,7 +3,7 @@
  *
  * Route paths come from config (`routes` in config/default.json), so URLs can
  * be changed without touching code. Views are registered by route *name*
- * (register, verify, welcome, login, otp, dashboard).
+ * (register, verify, welcome, login, otp). The dashboard is a separate page.
  */
 export function createRouter({ routes, views, onChange, fallback }) {
   const nameByPath = Object.fromEntries(Object.entries(routes).map(([name, path]) => [path, name]));
