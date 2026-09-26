@@ -82,15 +82,23 @@ test('full flow: register → verify link → auto sign-in → OTP sign-in → l
   const early = await call('POST', '/v1/auth/otp', { email });
   assert.equal(early.body.error.code, 'EMAIL_NOT_VERIFIED');
 
-  // 3. Click the emailed link → redirected to the /verified page
-  const link = new URL(latestMail(email, 'verify').link);
-  const click = await call('GET', link.pathname + link.search);
-  assert.equal(click.status, 302);
-  assert.match(click.headers.get('location'), /\/verified#type=invite$/);
+  // The activation email: correct template, link to /verified with the token in the fragment
+  const mail = latestMail(email, 'verify');
+  assert.match(mail.subject, /Verify your email/);
+  assert.match(mail.html, /Hi Grace Hopper/);
+  const link = new URL(mail.link);
+  assert.equal(link.pathname, '/verified');
+  const token = new URLSearchParams(link.hash.slice(1)).get('token');
+  assert.ok(token);
 
-  // Clicking again → link already used
-  const again = await call('GET', link.pathname + link.search);
-  assert.match(again.headers.get('location'), /error_code=otp_expired/);
+  // 3. The /verified page posts the token → account activated
+  const verify = await call('POST', '/v1/verifications', { token });
+  assert.equal(verify.status, 200);
+  assert.equal(verify.body.email, email);
+
+  // Opening the link again → already used
+  const again = await call('POST', '/v1/verifications', { token });
+  assert.equal(again.body.error.code, 'LINK_INVALID');
 
   // 4. Poll → verified, profile saved, session cookie set
   status = await call('GET', `/v1/registrations/${registrationId}/status`);
@@ -111,7 +119,17 @@ test('full flow: register → verify link → auto sign-in → OTP sign-in → l
   assert.equal(otp.status, 200);
   const { challengeId } = otp.body;
 
-  const code = latestMail(email, 'otp').code;
+  // The sign-in email: code in subject and body, and no link at all
+  const codeMail = latestMail(email, 'otp');
+  const code = codeMail.code;
+  assert.match(code, /^\d{6}$/);
+  assert.ok(codeMail.subject.startsWith(code));
+  assert.ok(codeMail.html.includes(code));
+  assert.doesNotMatch(codeMail.html, /<a\s/i);
+
+  // The code is never stored in plain text
+  assert.ok(!JSON.stringify(getState().tables.otp_challenges).includes(`"${code}"`));
+
   const wrong = code === '000000' ? '111111' : '000000';
   const bad = await call('POST', '/v1/auth/otp/verify', { challengeId, code: wrong });
   assert.equal(bad.status, 401);
@@ -148,6 +166,24 @@ test('OTP locks after the maximum number of wrong attempts', async () => {
   // Even the right code is refused once locked
   res = await call('POST', '/v1/auth/otp/verify', { challengeId: otp.body.challengeId, code });
   assert.equal(res.body.error.code, 'OTP_LOCKED');
+});
+
+test('resent activation email invalidates the previous link', async () => {
+  const email = 'katherine@example.com';
+  const reg = await call('POST', '/v1/registrations', { name: 'Katherine Johnson', email, termsAccepted: true });
+  const firstToken = new URLSearchParams(new URL(latestMail(email, 'verify').link).hash.slice(1)).get('token');
+
+  // Pretend the cooldown has passed, then resend
+  const row = getState().tables.registrations.find((r) => r.id === reg.body.registrationId);
+  row.last_sent_at = new Date(Date.now() - 3600e3).toISOString();
+  const resend = await call('POST', `/v1/registrations/${reg.body.registrationId}/resend`, {});
+  assert.equal(resend.status, 202);
+
+  const old = await call('POST', '/v1/verifications', { token: firstToken });
+  assert.equal(old.body.error.code, 'LINK_INVALID');
+
+  const newToken = new URLSearchParams(new URL(latestMail(email, 'verify').link).hash.slice(1)).get('token');
+  assert.equal((await call('POST', '/v1/verifications', { token: newToken })).status, 200);
 });
 
 test('unknown email gets ACCOUNT_NOT_FOUND', async () => {

@@ -1,12 +1,16 @@
 /**
- * Landing page for the verification link in the email.
+ * Landing page for the activation link in the verification email.
  *
- * Supabase confirms the email *before* redirecting here and appends either
- * tokens or an error to the URL fragment (#...). We only read the error, then
- * wipe the fragment so tokens don't linger in the address bar or history.
- * The original tab — which is polling — picks up the verification itself.
+ * The link looks like /verified#token=... — the token is in the URL fragment,
+ * which browsers never send to the server, so it stays out of logs. This page
+ * reads it, removes it from the address bar, and POSTs it to the API. Doing
+ * the verification with a POST (not on page load via GET) also stops email
+ * link scanners from activating accounts by merely fetching the URL.
+ *
+ * The original tab — which is polling — then continues automatically.
  */
 import { loadConfig } from './core/config.js';
+import { api } from './core/api.js';
 import { h, replaceChildren } from './core/dom.js';
 import { viewHeader } from './components/ui.js';
 import { successMark } from './components/celebration.js';
@@ -14,39 +18,29 @@ import { icon } from './components/icons.js';
 
 const outlet = document.getElementById('view');
 
-function readFragment() {
-  const params = new URLSearchParams(location.hash.slice(1));
-  history.replaceState(null, '', location.pathname); // strip tokens from the URL
-  return { error: params.get('error'), errorCode: params.get('error_code'), description: params.get('error_description') };
+/** Read the token from the fragment, then strip it from the URL and history. */
+function takeToken() {
+  const token = new URLSearchParams(location.hash.slice(1)).get('token');
+  history.replaceState(null, '', location.pathname);
+  return token;
 }
 
-async function main() {
-  const { error, errorCode, description } = readFragment();
-  const config = await loadConfig();
-  const link = (route, label, primary) =>
-    h('a', { class: `btn ${primary ? 'btn-primary btn-block' : 'btn-secondary'}`, href: route }, label);
+const button = (href, label, primary) =>
+  h('a', { class: `btn ${primary ? 'btn-primary btn-block' : 'btn-secondary'}`, href }, label);
 
-  if (error) {
-    const expired = errorCode === 'otp_expired';
-    replaceChildren(
-      outlet,
-      h(
-        'div',
-        { class: 'view' },
-        h('div', { class: 'icon-tile' }, icon('clock', { size: 26 })),
-        viewHeader({
-          kicker: 'Verification failed',
-          title: expired ? 'This link has expired' : 'We couldn’t verify this link',
-          lead: expired
-            ? 'Verification links can only be used once and expire after a while. Start again to get a fresh link.'
-            : description || 'The link may be incomplete. Try opening it again, or start over.',
-        }),
-        link(config.routes.register, 'Start again', true),
-      ),
-    );
-    return;
-  }
+function showSpinner() {
+  replaceChildren(
+    outlet,
+    h(
+      'div',
+      { class: 'view' },
+      viewHeader({ kicker: 'Account activation', title: 'Verifying your email…' }),
+      h('div', { class: 'btn-row' }, h('span', { class: 'spinner', 'aria-hidden': 'true' })),
+    ),
+  );
+}
 
+function showSuccess(config, email) {
   replaceChildren(
     outlet,
     h(
@@ -55,12 +49,60 @@ async function main() {
       successMark(),
       viewHeader({
         kicker: 'Email verified',
-        title: 'You’re all set',
-        lead: 'Your email is confirmed. Go back to the tab where you signed up — it continues automatically. Opened this on another device? You can sign in here with a one-time code.',
+        title: 'Your account is active',
+        lead: [
+          h('strong', {}, email),
+          ' is confirmed. Go back to the tab where you signed up — it continues automatically. ' +
+            'Opened this on another device? Sign in here with a one-time code.',
+        ],
       }),
-      h('div', { class: 'btn-row' }, link(config.routes.login, 'Sign in on this device')),
+      h('div', { class: 'btn-row' }, button(config.routes.login, 'Sign in on this device')),
     ),
   );
+}
+
+function showFailure(config, { title, lead }) {
+  replaceChildren(
+    outlet,
+    h(
+      'div',
+      { class: 'view' },
+      h('div', { class: 'icon-tile' }, icon('clock', { size: 26 })),
+      viewHeader({ kicker: 'Verification failed', title, lead }),
+      h('div', { class: 'btn-row' }, button(config.routes.register, 'Register again', true), button(config.routes.login, 'Sign in')),
+    ),
+  );
+}
+
+async function main() {
+  const token = takeToken();
+  const config = await loadConfig();
+
+  if (!token) {
+    return showFailure(config, {
+      title: 'This link is incomplete',
+      lead: 'Open the link from your email again, or copy the whole address into your browser.',
+    });
+  }
+
+  showSpinner();
+  try {
+    const result = await api.post('/verifications', { token });
+    showSuccess(config, result.email);
+  } catch (err) {
+    const failures = {
+      LINK_EXPIRED: {
+        title: 'This link has expired',
+        lead: `Activation links are valid for ${config.registration.linkTtlHours} hours. Register again to get a new one.`,
+      },
+      LINK_INVALID: {
+        title: 'This link has already been used',
+        lead: 'If you already activated your account, sign in with a one-time code. ' +
+          'If you requested another email since, use the link in the newest one.',
+      },
+    };
+    showFailure(config, failures[err.code] ?? { title: 'We couldn’t verify this link', lead: err.message });
+  }
 }
 
 main().catch((err) => replaceChildren(outlet, h('p', {}, err.message)));

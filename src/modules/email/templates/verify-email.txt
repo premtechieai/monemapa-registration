@@ -1,0 +1,11 @@
+Confirm your email address
+
+Hi {{ name }}, thanks for signing up for {{ appName }}.
+
+Open this link to verify {{ email }} and activate your account:
+{{ link }}
+
+You can open it on any device. The page where you signed up will continue automatically.
+The link expires in {{ linkTtlHours }} hours and can be used once.
+
+Didn't create a {{ appName }} account? You can safely ignore this email.

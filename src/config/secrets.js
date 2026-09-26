@@ -9,8 +9,8 @@
  * The app refuses to start if a secret is missing or malformed — failing fast
  * is far better than failing on the first user request.
  *
- * In sandbox mode (npm run sandbox) no Supabase secrets are needed, and a
- * fixed development cookie secret is used if none is configured.
+ * In sandbox mode (npm run sandbox) no database or SMTP secrets are needed,
+ * and a fixed development cookie secret is used if none is configured.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -30,13 +30,19 @@ const realValue = (name, minLength) =>
     .min(minLength, `${name} must be at least ${minLength} characters`)
     .refine((v) => !isPlaceholder(v), `${name} still has its placeholder value`);
 
-const supabaseSchema = z.object({
+const productionSchema = z.object({
+  // Database (Supabase Postgres, accessed server-side with the service role key)
   SUPABASE_URL: z
     .string({ required_error: 'SUPABASE_URL is required' })
     .url('SUPABASE_URL must be a valid URL')
     .refine((v) => !v.includes('your-project-ref'), 'SUPABASE_URL still has its placeholder value'),
-  SUPABASE_ANON_KEY: realValue('SUPABASE_ANON_KEY', 20),
   SUPABASE_SERVICE_ROLE_KEY: realValue('SUPABASE_SERVICE_ROLE_KEY', 20),
+
+  // Email (SMTP login; host/port/sender live in config/*.json)
+  SMTP_USER: realValue('SMTP_USER', 1),
+  SMTP_PASSWORD: realValue('SMTP_PASSWORD', 1),
+
+  // Signs cookies and keys the hashes of one-time codes.
   COOKIE_SECRET: realValue('COOKIE_SECRET', 32),
 });
 
@@ -61,13 +67,13 @@ export function loadSecrets({ file, env = process.env, sandbox = config.isSandbo
   const fromFile = fs.existsSync(secretsFile) ? dotenv.parse(fs.readFileSync(secretsFile)) : {};
   const merged = { ...fromFile, ...env };
 
-  const result = (sandbox ? sandboxSchema : supabaseSchema).safeParse(merged);
+  const result = (sandbox ? sandboxSchema : productionSchema).safeParse(merged);
   if (!result.success) {
     const problems = result.error.issues.map((i) => `  - ${i.message}`).join('\n');
     throw new Error(
       `Invalid or missing secrets (looked in ${secretsFile} and the environment):\n${problems}\n` +
-        'Fill in secrets/.env with your Supabase project values (Project Settings > API).\n' +
-        'No Supabase project yet? Run `npm run sandbox` to try everything locally first.',
+        'Fill in secrets/.env (see secrets/.env.example).\n' +
+        'Want to try everything locally first? Run `npm run sandbox`.',
     );
   }
   return Object.freeze(result.data);

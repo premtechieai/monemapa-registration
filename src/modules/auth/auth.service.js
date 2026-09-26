@@ -2,25 +2,30 @@
  * AuthService — passwordless sign-in with an emailed one-time code.
  *
  * Flow:
- *   1. requestOtp(email)       → Supabase emails a code; we open a "challenge"
- *   2. verifyOtp(id, code)     → we spend one attempt, Supabase checks the code,
- *                                and on success a session is returned
+ *   1. requestOtp(email)    → generate a code, store its HMAC in a new
+ *                             "challenge", email the code (SMTP)
+ *   2. verifyOtp(id, code)  → spend one attempt, compare hashes; on success
+ *                             the caller starts a session
  *
- * Supabase generates, emails and validates the code. The challenge row adds
- * the rules the product needs on top: a shorter expiry, a hard attempt limit
- * and a resend cooldown.
+ * Rules: codes expire after otp.ttlSec, allow otp.maxAttempts wrong guesses,
+ * can be re-requested every otp.resendCooldownSec, and requesting a new code
+ * revokes the previous one.
  */
 import config from '../../config/index.js';
-import { authAdmin, createAuthClient } from '../../lib/supabase.js';
+import { getSecrets } from '../../config/secrets.js';
 import { Errors } from '../../lib/errors.js';
-import { mapAuthError } from '../../lib/supabaseErrors.js';
+import { hmacSha256, randomDigits, safeEqualHex } from '../../lib/crypto.js';
 import logger from '../../lib/logger.js';
 import * as users from '../users/users.repository.js';
 import * as registrations from '../registration/registration.repository.js';
 import { toPublicUser } from '../users/users.mapper.js';
+import { sendSignInCode } from '../email/email.service.js';
 import * as otpChallenges from './otp.repository.js';
 
 const secondsSince = (iso) => (Date.now() - new Date(iso).getTime()) / 1000;
+
+/** Keyed hash of a code: a leaked table can't be brute-forced without the server secret. */
+const hashCode = (code) => hmacSha256(code, getSecrets().COOKIE_SECRET);
 
 /** Step 1: email a sign-in code to a registered, verified user. */
 export async function requestOtp(email) {
@@ -35,7 +40,7 @@ export async function requestOtp(email) {
 
   // Resend cooldown: one code per email per `resendCooldownSec`.
   const latest = await otpChallenges.findLatestForEmail(email);
-  if (latest) {
+  if (latest && !latest.revoked_at) {
     const wait = Math.ceil(config.otp.resendCooldownSec - secondsSince(latest.created_at));
     if (wait > 0) throw Errors.rateLimited(wait);
   }
@@ -43,18 +48,22 @@ export async function requestOtp(email) {
   // Any earlier code for this email stops working once a new one is requested.
   await otpChallenges.revokeOpenForEmail(email);
 
-  const { error } = await createAuthClient().signInWithOtp({
-    email,
-    options: { shouldCreateUser: false }, // sign-in only; registration is a separate flow
-  });
-  if (error) throw mapAuthError(error, 'signInWithOtp', config.otp.resendCooldownSec);
-
+  const code = randomDigits(config.otp.length);
   const challenge = await otpChallenges.create({
     userId: profile.id,
     email,
+    codeHash: hashCode(code),
     attemptsLeft: config.otp.maxAttempts,
     expiresAt: new Date(Date.now() + config.otp.ttlSec * 1000),
   });
+
+  try {
+    await sendSignInCode({ to: email, code });
+  } catch (err) {
+    // No email, no usable code: revoke it so the cooldown doesn't block a retry.
+    await otpChallenges.revoke(challenge.id);
+    throw err;
+  }
 
   logger.info('OTP sent', { userId: profile.id, challengeId: challenge.id });
   return {
@@ -67,7 +76,7 @@ export async function requestOtp(email) {
   };
 }
 
-/** Step 2: check the code. Returns { user, session } on success. */
+/** Step 2: check the code. Returns the signed-in user's profile. */
 export async function verifyOtp(challengeId, code) {
   const challenge = await otpChallenges.findById(challengeId);
   if (!challenge) throw Errors.notFound('Sign-in request');
@@ -80,11 +89,7 @@ export async function verifyOtp(challengeId, code) {
   const attemptsLeft = await otpChallenges.spendAttempt(challengeId);
   if (attemptsLeft < 0) throw Errors.otpLocked();
 
-  const { data, error } = await createAuthClient().verifyOtp({ email: challenge.email, token: code, type: 'email' });
-
-  if (error) {
-    if (error.status >= 500 || !error.status) throw mapAuthError(error, 'verifyOtp');
-    // Wrong or (Supabase-side) expired code.
+  if (!safeEqualHex(hashCode(code), challenge.code_hash)) {
     logger.info('OTP rejected', { challengeId, attemptsLeft });
     throw attemptsLeft === 0 ? Errors.otpLocked() : Errors.otpInvalid(attemptsLeft);
   }
@@ -93,32 +98,5 @@ export async function verifyOtp(challengeId, code) {
   const profile = await users.touchLastLogin(challenge.user_id);
 
   logger.info('OTP sign-in succeeded', { userId: profile.id });
-  return { user: toPublicUser(profile), session: data.session };
-}
-
-/**
- * Create a Supabase session for a user without them typing a code.
- *
- * Used exactly once, right after the verification poll sees the email
- * confirmed, so "Go to dashboard" works without an extra sign-in. The admin
- * API generates a magic-link token server-side (no email is sent) and we
- * immediately redeem it.
- */
-export async function createSessionForEmail(email) {
-  const { data: link, error: linkError } = await authAdmin.generateLink({ type: 'magiclink', email });
-  if (linkError) throw mapAuthError(linkError, 'generateLink');
-
-  const { data, error } = await createAuthClient().verifyOtp({
-    token_hash: link.properties.hashed_token,
-    type: 'magiclink',
-  });
-  if (error) throw mapAuthError(error, 'verifyOtp(token_hash)');
-  return data.session;
-}
-
-/** Revoke the session's refresh token in Supabase. Best-effort. */
-export async function signOut(accessToken) {
-  if (!accessToken) return;
-  const { error } = await authAdmin.signOut(accessToken, 'local');
-  if (error) logger.warn('Supabase signOut failed', { message: error.message });
+  return toPublicUser(profile);
 }

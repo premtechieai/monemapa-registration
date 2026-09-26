@@ -4,7 +4,7 @@
  */
 import { Router } from 'express';
 import { apiRateLimit, requireJson } from './middleware/security.js';
-import registrationRoutes from './modules/registration/registration.routes.js';
+import { registrationRoutes, verificationRoutes } from './modules/registration/registration.routes.js';
 import authRoutes from './modules/auth/auth.routes.js';
 import userRoutes from './modules/users/users.routes.js';
 
@@ -13,6 +13,7 @@ const api = Router();
 api.use(requireJson);
 api.get('/health', (_req, res) => res.json({ status: 'ok' }));
 api.use('/registrations', apiRateLimit, registrationRoutes);
+api.use('/verifications', apiRateLimit, verificationRoutes);
 api.use('/auth', apiRateLimit, authRoutes);
 api.use(userRoutes);
 

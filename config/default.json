@@ -36,7 +36,24 @@
   },
   "session": {
     "cookiePrefix": "mm",
-    "refreshTtlDays": 30
+    "ttlDays": 30
+  },
+  "email": {
+    "from": {
+      "name": "MoneMapa",
+      "address": "ContactHackathon@resend.dev"
+    },
+    "replyTo": "",
+    "smtp": {
+      "host": "smtp.resend.com",
+      "port": 465,
+      "secure": true,
+      "connectionTimeoutMs": 10000
+    },
+    "subjects": {
+      "verifyEmail": "Verify your email to activate your {{ appName }} account",
+      "signInCode": "{{ code }} is your {{ appName }} sign-in code"
+    }
   },
   "rateLimit": {
     "windowMin": 15,

@@ -1,10 +1,7 @@
 <!--
-  Supabase → Authentication → Emails → Templates → "Invite user"
-  Subject: Verify your email to activate your MoneMapa account
-
-  Sent when someone registers. The button link ({{ .ConfirmationURL }})
-  verifies the email and redirects to <baseUrl>/verified.
-  {{ .Data.full_name }} is the name entered on the registration form.
+  Account activation email — sent after registration.
+  Subject: config.email.subjects.verifyEmail
+  Placeholders: appName, name, email, link, linkTtlHours
 -->
 <!DOCTYPE html>
 <html lang="en">
@@ -16,7 +13,7 @@
 </head>
 <body style="margin:0;padding:0;background:#eff1f5;">
   <!-- Preview text shown in the inbox list -->
-  <div style="display:none;max-height:0;overflow:hidden;">Confirm your email to finish creating your MoneMapa account.</div>
+  <div style="display:none;max-height:0;overflow:hidden;">Confirm your email to finish creating your {{ appName }} account.</div>
 
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eff1f5;">
     <tr>
@@ -37,15 +34,15 @@
               <p style="margin:0 0 8px;font-size:12px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#6a1fc9;">Account activation</p>
               <h1 style="margin:0 0 16px;font-size:26px;line-height:1.2;color:#4c4f69;">Confirm your email address</h1>
               <p style="margin:0 0 24px;font-size:15px;line-height:1.6;color:#6c6f85;">
-                Hi {{ .Data.full_name }}, thanks for signing up. Click the button below to verify
-                <strong style="color:#4c4f69;">{{ .Email }}</strong> and activate your account.
+                Hi {{ name }}, thanks for signing up. Click the button below to verify
+                <strong style="color:#4c4f69;">{{ email }}</strong> and activate your account.
               </p>
 
               <!-- Button -->
               <table role="presentation" cellpadding="0" cellspacing="0">
                 <tr>
                   <td style="border-radius:6px;background:#8839ef;">
-                    <a href="{{ .ConfirmationURL }}" target="_blank"
+                    <a href="{{ link }}" target="_blank"
                        style="display:inline-block;padding:14px 28px;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:6px;">
                       Verify email &amp; activate
                     </a>
@@ -55,7 +52,7 @@
 
               <p style="margin:24px 0 0;font-size:13px;line-height:1.6;color:#6c6f85;">
                 You can open this link on any device. The page where you signed up will continue automatically.
-                The link expires in 24 hours and can be used once.
+                The link expires in {{ linkTtlHours }} hours and can be used once.
               </p>
             </td>
           </tr>
@@ -63,7 +60,7 @@
           <!-- Footer -->
           <tr>
             <td style="padding:20px 32px;border-top:1px solid #e6e9ef;font-family:Montserrat,Segoe UI,Arial,sans-serif;font-size:12px;line-height:1.6;color:#8c8fa1;">
-              Didn't create a MoneMapa account? You can safely ignore this email.
+              Didn't create a {{ appName }} account? You can safely ignore this email.
             </td>
           </tr>
         </table>

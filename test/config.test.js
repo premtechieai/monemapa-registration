@@ -9,8 +9,9 @@ import { loadSecrets } from '../src/config/secrets.js';
 
 const validSecrets = {
   SUPABASE_URL: 'https://abc.supabase.co',
-  SUPABASE_ANON_KEY: 'anon-key-0123456789abcdef',
   SUPABASE_SERVICE_ROLE_KEY: 'service-key-0123456789abcdef',
+  SMTP_USER: 'resend',
+  SMTP_PASSWORD: 're_test_password',
   COOKIE_SECRET: 'x'.repeat(40),
 };
 

@@ -9,6 +9,7 @@ const TABLES = [
   { key: 'profiles', label: 'profiles' },
   { key: 'registrations', label: 'registrations' },
   { key: 'otpChallenges', label: 'otp_challenges' },
+  { key: 'sessions', label: 'sessions' },
 ];
 
 let activeTable = 'profiles';
@@ -34,22 +35,35 @@ function renderMail(mail) {
     h('div', { class: 'sbx__subject' }, mail.subject),
   ];
 
+  // Opens the actual rendered email (the real template) in a new tab.
+  const viewEmail = h('a', { class: 'btn btn-ghost', href: `/sandbox/mail/${mail.id}`, target: '_blank', rel: 'noopener' }, 'View email');
+
   if (mail.kind === 'otp') {
-    return h('div', { class: 'sbx__item' }, head, h('div', { class: 'sbx__row' }, h('span', { class: 'sbx__code' }, mail.code), copyButton(mail.code)));
+    return h(
+      'div',
+      { class: 'sbx__item' },
+      head,
+      h('div', { class: 'sbx__row' }, h('span', { class: 'sbx__code' }, mail.code), copyButton(mail.code), viewEmail),
+    );
   }
 
-  const active = mail.linkStatus === 'active';
-  const label = { active: 'Open verification link ↗', used: 'Link used ✓', replaced: 'Link replaced by a newer email' }[mail.linkStatus];
-  const action = active
-    ? h('a', { class: 'btn btn-primary', href: mail.link, target: '_blank', rel: 'noopener' }, label)
-    : h('span', { class: 'tag tag--muted' }, label);
-  return h('div', { class: 'sbx__item' }, head, h('div', { class: 'sbx__row' }, action));
+  const label = {
+    active: 'Open activation link ↗',
+    used: 'Link used ✓',
+    replaced: 'Link replaced by a newer email',
+    expired: 'Link expired',
+  }[mail.linkStatus];
+  const action =
+    mail.linkStatus === 'active'
+      ? h('a', { class: 'btn btn-primary', href: mail.link, target: '_blank', rel: 'noopener' }, label)
+      : h('span', { class: 'tag tag--muted' }, label);
+  return h('div', { class: 'sbx__item' }, head, h('div', { class: 'sbx__row' }, action, viewEmail));
 }
 
 // --- Database ----------------------------------------------------------------
 function renderRow(row) {
   const status = row.status && h('span', { class: `tag${row.status === 'EXPIRED' ? ' tag--muted' : ''}` }, row.status);
-  const title = row.full_name || row.email;
+  const title = row.full_name || row.email || row.method || row.id;
   return h(
     'div',
     { class: 'sbx__item' },
