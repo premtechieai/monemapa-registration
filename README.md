@@ -213,11 +213,12 @@ All URLs, routes, timings and email settings live in `config/*.json`. The browse
 | `app.port` | `3000` | Env override: `PORT` |
 | `app.trustProxy` | `false` (`1` in prod) | Number of proxies in front of the app whose `X-Forwarded-For` is trusted (Vercel: `1`). Never `true`: that lets clients spoof their IP and bypass rate limiting |
 | `api.basePath` | `/v1` | API prefix |
-| `routes.*` | `/register`, `/verify`, `/welcome`, `/login`, `/login/code`, `/dashboard`, `/verified` | Page URLs |
+| `routes.*` | `/register`, `/verify`, `/welcome`, `/login`, `/login/code`, `/dashboard`, `/transactions`, `/verified` | Page URLs |
 | `links.termsUrl` / `privacyUrl` | `/legal/*.html` | Linked from the registration form |
 | `ui.showPreviewToggle` | `true` | Desktop/Mobile preview toolbar above the registration and dashboard pages (`false` = full-page layout) |
-| `dashboard.currency` | `AED` | Currency used for all dashboard amounts |
-| `dashboard.transactionsUrl` | `#` | Transactions page link (`#` = not built yet: links disabled, add buttons hidden) |
+| `finance.currency` | `AED` | Currency for all amounts on the dashboard and transactions pages |
+| `transactions.autoApplyAI` | `true` | Pre-select the top AI category suggestion while typing a description |
+| `transactions.showConfidence` | `true` | Show the confidence % on AI suggestion chips |
 | `registration.linkTtlHours` | `24` | How long an activation link stays valid |
 | `registration.pollIntervalSec` | `3` | Status check interval |
 | `registration.pollTimeoutMin` | `30` | Stop auto-polling after this long |
@@ -281,12 +282,31 @@ After a successful sign-in (and from **Go to dashboard** after registration) the
   sent with it automatically. The server checks it before serving the page (`requirePageSession`) and redirects to
   sign-in when it's missing or expired; the page then loads the user from `GET /v1/me`. **Sign out** revokes the
   session. (A dashboard on a *different* domain would not receive the cookie.)
-- **Files:** `public/dashboard.html`, `public/css/dashboard.css`, `public/js/dashboard/` (`main.js`, SVG `charts.js`,
-  and the design's `transactions-service.js`).
-- **Data:** `transactions-service.js` is the design's demo adapter: it seeds sample transactions and stores them in
-  the browser's `localStorage`. Replace it with a `/v1/transactions` API when that module is built.
-- **Config:** `dashboard.currency` (default `AED`; e.g. `USD`, `INR`, `SGD`) and `dashboard.transactionsUrl`. While it's `#`, the
-  Transactions links show as "Coming soon" and the add-income/expense buttons are hidden.
+- **Files:** `public/dashboard.html`, `public/css/dashboard.css`, `public/js/dashboard/` (`main.js`, SVG `charts.js`).
+- The Income / Spending **+** buttons open the Transactions page with the Add panel ready for that type.
+
+## Transactions
+
+The **Transaction Tracking** design, at `routes.transactions` (default `/transactions`, configurable). Signed-in only,
+same session and page frame as the dashboard.
+
+- **List:** month picker, type tabs (All / Income / Expense), category filter and search. Wide screens show summary
+  cards and a table with edit/delete; narrow screens show a combined summary card and a list grouped by day.
+- **Add / edit:** a side panel on wide screens, a bottom sheet on narrow ones (floating **+** button). AI suggests
+  categories as you type the description; overriding a suggestion can save a rule ("Always categorize … as …").
+  Delete asks for confirmation and can be undone from the toast.
+- **Deep link:** `/transactions?add=income` or `?add=expense` opens the Add panel with that type (used by the
+  dashboard's **+** buttons).
+- **Files:** `public/transactions.html`, `public/css/transactions.css`, `public/js/transactions/main.js`.
+- **Config:** `transactions.autoApplyAI`, `transactions.showConfidence`, and the shared `finance.currency`.
+
+## Shared by the finance pages
+
+- `public/js/finance/shell.js`: session check (`GET /v1/me`), header avatar and **Sign out**, navigation links built
+  from `config.routes`, the Desktop/Mobile toolbar, and currency formatting (`finance.currency`, default `AED`).
+- `public/js/finance/transactions-service.js`: the design's data adapter (`window.MoneMapaTx`). It seeds sample
+  transactions and stores them in the browser's `localStorage`; AI categorization is a local keyword/history model.
+  Replace it with a `/v1/transactions` API when that module is built.
 
 ## Integration points
 

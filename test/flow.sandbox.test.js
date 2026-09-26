@@ -160,16 +160,26 @@ test('dashboard page shares the login session and is protected without it', asyn
   assert.match(page.headers.get('content-type'), /text\/html/);
   assert.equal(page.headers.get('cache-control'), 'no-store');
 
-  // The raw file is never served directly, only through the checked route.
+  // The transactions page shares the same session.
+  const txPage = await call('GET', '/transactions');
+  assert.equal(txPage.status, 200);
+  assert.match(txPage.headers.get('content-type'), /text\/html/);
+
+  // The raw files are never served directly, only through the checked routes.
   const raw = await call('GET', '/dashboard.html');
   assert.equal(raw.status, 302);
   assert.equal(raw.headers.get('location'), '/dashboard');
+  const rawTx = await call('GET', '/transactions.html');
+  assert.equal(rawTx.headers.get('location'), '/transactions');
 
-  // After signing out, the dashboard redirects to sign-in.
+  // After signing out, both pages redirect to sign-in.
   await call('POST', '/v1/auth/logout', {});
   page = await call('GET', '/dashboard');
   assert.equal(page.status, 302);
   assert.equal(page.headers.get('location'), '/login');
+  const txAfter = await call('GET', '/transactions?add=income');
+  assert.equal(txAfter.status, 302);
+  assert.equal(txAfter.headers.get('location'), '/login');
 });
 
 test('OTP locks after the maximum number of wrong attempts', async () => {

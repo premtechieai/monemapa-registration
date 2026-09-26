@@ -17,7 +17,8 @@ const publicConfig = Object.freeze({
   apiBasePath: config.api.basePath,
   routes: config.routes,
   links: config.links,
-  dashboard: config.dashboard,
+  finance: config.finance,
+  transactions: config.transactions,
   ui: config.ui,
   registration: {
     pollIntervalSec: config.registration.pollIntervalSec,

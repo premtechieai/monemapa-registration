@@ -1,20 +1,17 @@
 /**
  * Dashboard page.
  *
- * Session: the page is only served to signed-in users (the server checks
- * the httpOnly session cookie set at login). Here we load the user from
- * GET /v1/me — same cookie, same session — and send them to sign-in if it
- * has expired. "Sign out" ends the server session.
+ * Session, header, navigation and the Desktop/Mobile toolbar come from the
+ * shared finance shell (../finance/shell.js): the page is only served to
+ * signed-in users and reuses the login session.
  *
  * Data: window.MoneMapaTx (transactions-service.js). Totals, trends and
  * charts are computed per selected month, following the dashboard design.
+ * The Income/Spending "+" buttons open the Transactions page's Add panel.
  */
-import { loadConfig } from '../core/config.js';
 import { h, replaceChildren, svg } from '../core/dom.js';
-import { store } from '../core/store.js';
-import { authService } from '../services/authService.js';
 import { alertBox } from '../components/ui.js';
-import { mountPreviewToggle } from '../components/previewToggle.js';
+import { initShell, routeUrl, whenTransactionsReady } from '../finance/shell.js';
 import { barChart, donut, lineChart, niceMax } from './charts.js';
 
 const $ = (id) => document.getElementById(id);
@@ -26,75 +23,11 @@ const state = {
 };
 
 let config;
-let fmt;
-let compactFmt;
-const compact = (v) => compactFmt.format(v);
+let fmt; // Intl.NumberFormat for config.finance.currency
+let compact; // v => "AED 2.4K"
 
-// --- Session -----------------------------------------------------------------
-
-async function loadUser() {
-  try {
-    return await authService.me();
-  } catch (err) {
-    if (err.status === 401) {
-      location.replace(config.routes.login); // session expired or signed out elsewhere
-      return null;
-    }
-    throw err;
-  }
-}
-
-function showUser({ user }) {
-  const name = user.fullName || '';
-  const first = name.split(/\s+/)[0];
-  const hour = new Date().getHours();
-  const greet = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
-  $('greeting').textContent = first ? `${greet}, ${first}` : greet;
-
-  const avatar = $('avatar');
-  avatar.textContent = name ? name.split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase() : 'ME';
-  avatar.title = user.email;
-  avatar.setAttribute('aria-label', `Signed in as ${user.email}`);
-
-  const signOut = $('sign-out');
-  signOut.disabled = false;
-  signOut.addEventListener('click', async () => {
-    signOut.disabled = true;
-    try {
-      await authService.logout();
-    } finally {
-      store.set('prefillEmail', user.email);
-      location.assign(config.routes.login);
-    }
-  });
-}
-
-// --- Navigation links (configurable) ----------------------------------------------
-
-function wireNavigation() {
-  const tx = config.dashboard.transactionsUrl;
-  document.querySelectorAll('[data-nav="dashboard"]').forEach((a) => (a.href = config.routes.dashboard));
-  document.querySelectorAll('[data-nav="transactions"]').forEach((a) => {
-    if (tx && tx !== '#') {
-      a.href = tx;
-    } else {
-      a.setAttribute('aria-disabled', 'true');
-      a.title = 'Coming soon';
-    }
-  });
-  // Links that aren't built yet do nothing when clicked.
-  document.addEventListener('click', (e) => {
-    const link = e.target.closest('a[aria-disabled="true"]');
-    if (link) e.preventDefault();
-  });
-}
-
-/** URL of the transactions page with an "add" intent, or null if not configured. */
-function addUrl(type) {
-  const tx = config.dashboard.transactionsUrl;
-  if (!tx || tx === '#') return null;
-  return `${tx}${tx.includes('?') ? '&' : '?'}add=${type}`;
-}
+/** Transactions page with the "Add" panel open for this type (routes.transactions). */
+const addUrl = (type) => routeUrl(config, 'transactions', { add: type });
 
 // --- Data helpers -----------------------------------------------------------------
 
@@ -185,7 +118,8 @@ function renderKpis({ inc, exp, pInc, pExp, prevShort }) {
   replaceChildren(
     $('kpis'),
     cards.map((c) => {
-      const href = c.add && addUrl(c.add);
+      // "+" on Income and Spending opens the Transactions page with the Add
+      // panel ready for that type (routes.transactions?add=income|expense).
       const label = c.add === 'income' ? 'Add income' : 'Add expense';
       return h(
         'div',
@@ -194,10 +128,10 @@ function renderKpis({ inc, exp, pInc, pExp, prevShort }) {
           'div',
           { class: 'kpi__head' },
           h('span', { class: 'kpi__label' }, h('span', { class: 'dot', style: { background: c.dot } }), c.label),
-          href &&
+          c.add &&
             h(
               'a',
-              { class: `kpi__add kpi__add--${c.add}`, href, 'aria-label': label, title: label },
+              { class: `kpi__add kpi__add--${c.add}`, href: addUrl(c.add), 'aria-label': label, title: label },
               svg('<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>'),
             ),
         ),
@@ -354,49 +288,37 @@ function renderRecent(cur) {
 
 // --- Boot -----------------------------------------------------------------------
 
-/** transactions-service.js is a classic deferred script; wait until it has run. */
-function whenTransactionsReady() {
-  return new Promise((resolve) => {
-    const check = () => (window.MoneMapaTx ? resolve(window.MoneMapaTx) : setTimeout(check, 30));
-    check();
-  });
-}
-
 function shiftMonth(delta) {
   const d = new Date(state.ym.y, state.ym.m + delta, 1);
   state.ym = { y: d.getFullYear(), m: d.getMonth() };
   render();
 }
 
+function showGreeting(user) {
+  const first = (user.fullName || '').split(/\s+/)[0];
+  const hour = new Date().getHours();
+  const greet = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+  $('greeting').textContent = first ? `${greet}, ${first}` : greet;
+}
+
 async function main() {
-  config = await loadConfig();
-  const currency = config.dashboard.currency || 'AED';
-  fmt = new Intl.NumberFormat(undefined, { style: 'currency', currency });
-  compactFmt = new Intl.NumberFormat(undefined, { style: 'currency', currency, notation: 'compact', maximumFractionDigits: 1 });
-  wireNavigation();
-
-  // Desktop / Mobile preview toolbar, as on the registration pages.
-  // Without it the dashboard fills the whole window.
-  if (config.ui?.showPreviewToggle) {
-    mountPreviewToggle({
-      slot: $('preview-bar'),
-      frame: $('frame'),
-      kicker: `${config.appName} · finance/dashboard v1.0`,
-      title: 'Monthly dashboard',
-      onReset: () => {
-        // Restore the demo transactions and jump back to the current month.
-        window.MoneMapaTx?.reset();
-        state.ym = { y: new Date().getFullYear(), m: new Date().getMonth() };
-        if (state.cats.length) render();
-      },
-    });
-  } else {
-    $('page').classList.add('is-bleed');
-  }
-
-  const me = await loadUser();
-  if (!me) return;
-  showUser(me);
+  // Session, header, navigation and the Desktop/Mobile toolbar (shared with
+  // the Transactions page).
+  const shell = await initShell({
+    kicker: 'finance/dashboard v1.0',
+    title: 'Monthly dashboard',
+    onReset: () => {
+      // Restore the demo transactions and jump back to the current month.
+      window.MoneMapaTx?.reset();
+      state.ym = { y: new Date().getFullYear(), m: new Date().getMonth() };
+      if (state.cats.length) render();
+    },
+  });
+  if (!shell) return; // redirecting to sign-in
+  ({ config } = shell);
+  fmt = shell.money.formatter;
+  compact = shell.money.compact;
+  showGreeting(shell.user);
 
   const tx = await whenTransactionsReady();
   state.cats = tx.categories();

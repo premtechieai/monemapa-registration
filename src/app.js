@@ -47,25 +47,31 @@ export async function createApp() {
 
   // --- Front end ----------------------------------------------------------
   app.use(configRoutes); // GET /app-config.json
-  // Always go through the session-checked dashboard route, never the raw file.
-  app.get('/dashboard.html', (_req, res) => res.redirect(config.routes.dashboard));
+  // Signed-in pages: route name → HTML file. Each is served at its configurable
+  // path (config.routes) only with a valid session; they share the login session
+  // automatically (the httpOnly cookie goes with every same-origin request).
+  const PROTECTED_PAGES = { dashboard: 'dashboard.html', transactions: 'transactions.html' };
+
+  // Always go through the session-checked routes, never the raw files.
+  for (const [name, file] of Object.entries(PROTECTED_PAGES)) {
+    app.get(`/${file}`, (_req, res) => res.redirect(config.routes[name]));
+  }
   app.use(express.static(PUBLIC_DIR, { index: false, maxAge: config.isProduction ? '1h' : 0 }));
 
   // Page landed on from the verification email.
   app.get(config.routes.verified, (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'verified.html')));
 
-  // Dashboard: a separate page, only for signed-in users. It shares the login
-  // session automatically — the httpOnly session cookie is sent with every
-  // same-origin request — and loads the user from GET /v1/me.
-  app.get(config.routes.dashboard, requirePageSession, (_req, res) => {
-    res.set('Cache-Control', 'no-store'); // per-user page: never cache
-    res.sendFile(path.join(PUBLIC_DIR, 'dashboard.html'));
-  });
+  for (const [name, file] of Object.entries(PROTECTED_PAGES)) {
+    app.get(config.routes[name], requirePageSession, (_req, res) => {
+      res.set('Cache-Control', 'no-store'); // per-user page: never cache
+      res.sendFile(path.join(PUBLIC_DIR, file));
+    });
+  }
 
   // Registration / sign-in single-page app: every route serves the same shell;
   // the client-side router picks the view. Unknown paths redirect to registration.
   const appRoutes = Object.entries(config.routes)
-    .filter(([name]) => !['verified', 'dashboard'].includes(name))
+    .filter(([name]) => name !== 'verified' && !(name in PROTECTED_PAGES))
     .map(([, route]) => route);
   app.get(['/', ...appRoutes], (req, res) => {
     if (req.path === '/') return res.redirect(config.routes.register);
