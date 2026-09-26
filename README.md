@@ -109,7 +109,9 @@ When the sandbox flow looks right, set up Supabase below and switch to `npm run 
 4. **Authentication → Sign In / Providers → Email**: keep *Email* enabled. Set:
    - *Email OTP Length* = `6` (must match `otp.length` in config)
    - *Email OTP Expiration*: at least `300` seconds (must be ≥ `otp.ttlSec`)
-5. **Authentication → Email Templates**
+5. **Authentication → Email Templates.** Ready-made, branded templates are in
+   [`supabase/templates/`](supabase/templates/): `verify-email.html` → **Invite user**, and `sign-in-code.html` →
+   **Magic Link**. Suggested subjects are at the top of each file. Minimal versions:
    - **Invite user**: this is the verification email. Suggested subject: `Verify your email address`. The body must contain `{{ .ConfirmationURL }}`, e.g.
      ```html
      <h2>Confirm your email</h2>
