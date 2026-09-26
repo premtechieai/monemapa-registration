@@ -41,6 +41,7 @@ secrets/
 supabase/migrations/
   001_registration_module.sql  tables, RLS, atomic OTP-attempt function
   002_app_managed_auth.sql     own tokens, code hashes and sessions (no Supabase Auth)
+  003_transactions.sql         categories (seeded), transactions, category_rules
 scripts/
   check-connection.js        `npm run check`: database + SMTP connection test
 src/
@@ -109,6 +110,7 @@ sign out, code sign-in, attempt lockout, cooldowns, link replacement) and checks
 2. **SQL Editor** → run, in order:
    - [`supabase/migrations/001_registration_module.sql`](supabase/migrations/001_registration_module.sql)
    - [`supabase/migrations/002_app_managed_auth.sql`](supabase/migrations/002_app_managed_auth.sql)
+   - [`supabase/migrations/003_transactions.sql`](supabase/migrations/003_transactions.sql)
 
    Both are safe to re-run. No Supabase Auth settings (URL configuration, email templates, OTP length, SMTP) are
    needed: the app does all of that itself.
@@ -250,6 +252,10 @@ All errors use the same shape: `{ "error": { "code": "EMAIL_EXISTS", "message": 
 | `POST /v1/auth/otp/verify` `{ challengeId, code }` | Check code, start session | `200 AUTHENTICATED` · `401 OTP_INVALID` · `410 OTP_EXPIRED` · `429 OTP_LOCKED` |
 | `POST /v1/auth/logout` | End session | `204` |
 | `GET /v1/me` | Current user + session | `200` · `401 UNAUTHENTICATED` |
+| `GET /v1/transactions?from&to` | The user's categories, transactions and rules | `200` · `401` |
+| `POST /v1/transactions` · `PATCH` / `DELETE /v1/transactions/:id` | Create, edit, delete (delete returns the row for Undo) | `201`/`200` · `404` · `422 INVALID` |
+| `POST /v1/transactions/suggest` `{ description, type }` | Top-3 category suggestions (saved rule → keyword model → history) | `200` |
+| `PUT /v1/category-rules` `{ categoryId, pattern | description }` | Save "always categorize … as …" | `200` |
 | `GET /v1/health` | Liveness | `200` |
 
 ## Security notes
@@ -304,9 +310,8 @@ same session and page frame as the dashboard.
 
 - `public/js/finance/shell.js`: session check (`GET /v1/me`), header avatar and **Sign out**, navigation links built
   from `config.routes`, the Desktop/Mobile toolbar, and currency formatting (`finance.currency`, default `AED`).
-- `public/js/finance/transactions-service.js`: the design's data adapter (`window.MoneMapaTx`). It seeds sample
-  transactions and stores them in the browser's `localStorage`; AI categorization is a local keyword/history model.
-  Replace it with a `/v1/transactions` API when that module is built.
+- `public/js/finance/transactions-store.js`: loads the signed-in user's categories, transactions and rules from
+  `GET /v1/transactions` and applies changes through the API (stored in Supabase, per user).
 
 ## Integration points
 

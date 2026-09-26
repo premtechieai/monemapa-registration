@@ -39,6 +39,8 @@ function snapshot() {
     registrations: state.tables.registrations.map(hideSecrets),
     otpChallenges: state.tables.otp_challenges.map(hideSecrets),
     sessions: state.tables.sessions.map(hideSecrets),
+    transactions: state.tables.transactions,
+    categoryRules: state.tables.category_rules,
     events: state.events.slice(0, 100),
   };
 }

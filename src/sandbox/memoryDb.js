@@ -58,6 +58,29 @@ const SCHEMA = {
     defaults: () => ({ id: crypto.randomUUID(), created_at: nowIso(), revoked_at: null }),
     unique: [{ cols: ['id'] }, { cols: ['token_hash'] }],
   },
+  // Migration 003
+  categories: {
+    defaults: () => ({ sort_order: 0 }),
+    unique: [{ cols: ['id'] }],
+  },
+  transactions: {
+    defaults: () => ({
+      id: crypto.randomUUID(),
+      category_source: 'user',
+      ai_suggested: null,
+      ai_confidence: null,
+      note: null,
+      created_at: nowIso(),
+      updated_at: nowIso(),
+    }),
+    unique: [{ cols: ['id'] }],
+    touchUpdatedAt: true,
+  },
+  category_rules: {
+    defaults: () => ({ id: crypto.randomUUID(), created_at: nowIso(), updated_at: nowIso() }),
+    unique: [{ cols: ['id'] }, { cols: ['user_id', 'pattern'] }],
+    touchUpdatedAt: true,
+  },
 };
 
 /** PostgREST-style error objects. */
@@ -103,6 +126,10 @@ class Query {
     this.options = options;
     return this;
   }
+  delete() {
+    this.action = 'delete';
+    return this;
+  }
   eq(column, value) {
     this.filters.push((r) => r[column] === value);
     return this;
@@ -111,8 +138,17 @@ class Query {
     this.filters.push((r) => r[column] === value);
     return this;
   }
+  gte(column, value) {
+    this.filters.push((r) => r[column] >= value);
+    return this;
+  }
+  lte(column, value) {
+    this.filters.push((r) => r[column] <= value);
+    return this;
+  }
+  /** Repeated order() calls sort by several columns, in call order. */
   order(column, { ascending = true } = {}) {
-    this.sort = { column, ascending };
+    (this.sorts ??= []).push({ column, ascending });
     return this;
   }
   limit(count) {
@@ -162,6 +198,8 @@ class Query {
         return this.runUpdate();
       case 'upsert':
         return this.runUpsert();
+      case 'delete':
+        return this.runDelete();
       default:
         throw new Error(`[sandbox] unsupported action ${this.action}`);
     }
@@ -169,11 +207,26 @@ class Query {
 
   runSelect() {
     let result = this.rows.filter((r) => this.matches(r));
-    if (this.sort) {
-      const { column, ascending } = this.sort;
-      result = [...result].sort((a, b) => (a[column] < b[column] ? -1 : a[column] > b[column] ? 1 : 0) * (ascending ? 1 : -1));
+    if (this.sorts) {
+      result = [...result].sort((a, b) => {
+        for (const { column, ascending } of this.sorts) {
+          const cmp = a[column] < b[column] ? -1 : a[column] > b[column] ? 1 : 0;
+          if (cmp) return ascending ? cmp : -cmp;
+        }
+        return 0;
+      });
     }
     return this.max != null ? result.slice(0, this.max) : result;
+  }
+
+  runDelete() {
+    const doomed = this.rows.filter((r) => this.matches(r));
+    if (doomed.length) {
+      getState().tables[this.table] = this.rows.filter((r) => !doomed.includes(r));
+      persist();
+      recordEvent(`db.${this.table}.delete`, `${doomed.length} row(s)`);
+    }
+    return doomed;
   }
 
   insertRow(values) {
@@ -201,9 +254,10 @@ class Query {
   }
 
   runUpsert() {
-    const conflictColumn = this.options.onConflict ?? 'id';
+    // onConflict may name several columns: 'user_id,pattern'.
+    const conflictColumns = (this.options.onConflict ?? 'id').split(',').map((c) => c.trim());
     return this.payload.flatMap((values) => {
-      const existing = this.rows.find((r) => r[conflictColumn] === values[conflictColumn]);
+      const existing = this.rows.find((r) => conflictColumns.every((c) => r[c] === values[c]));
       if (!existing) return [this.insertRow(values)];
       if (this.options.ignoreDuplicates) return [];
       Object.assign(existing, values);

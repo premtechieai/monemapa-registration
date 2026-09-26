@@ -50,6 +50,9 @@ async function checkDatabase() {
     ['registrations', 'id, verification_token_hash, user_id'],
     ['otp_challenges', 'id, code_hash'],
     ['sessions', 'id, token_hash'],
+    ['categories', 'id, name'],
+    ['transactions', 'id, user_id, category_source'],
+    ['category_rules', 'id, pattern'],
   ];
 
   for (const [table, columns] of expectations) {
@@ -74,7 +77,7 @@ async function checkDatabase() {
     fail(
       `Table ${table}`,
       missing ? `missing table or columns (${cause})` : cause,
-      'Run supabase/migrations/001_registration_module.sql and 002_app_managed_auth.sql in the SQL Editor',
+      'Run the SQL files in supabase/migrations/ (001, 002, 003) in the SQL Editor',
     );
   }
 
