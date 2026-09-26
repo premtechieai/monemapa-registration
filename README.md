@@ -211,7 +211,7 @@ All URLs, routes, timings and email settings live in `config/*.json`. The browse
 | `app.mode` | `supabase` | `supabase` or `sandbox`. Env override: `APP_MODE` (`npm run sandbox` sets it) |
 | `app.baseUrl` | `http://localhost:3000` | Public URL; used to build the activation link. Env override: `APP_BASE_URL` |
 | `app.port` | `3000` | Env override: `PORT` |
-| `app.trustProxy` | `false` (`true` in prod) | Trust `X-Forwarded-*` behind a load balancer |
+| `app.trustProxy` | `false` (`1` in prod) | Number of proxies in front of the app whose `X-Forwarded-For` is trusted (Vercel: `1`). Never `true`: that lets clients spoof their IP and bypass rate limiting |
 | `api.basePath` | `/v1` | API prefix |
 | `routes.*` | `/register`, `/verify`, `/welcome`, `/login`, `/login/code`, `/dashboard`, `/verified` | Page URLs |
 | `links.termsUrl` / `privacyUrl` | `/legal/*.html` | Linked from the registration form |
