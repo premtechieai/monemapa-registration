@@ -24,11 +24,22 @@ const results = [];
 const pass = (name, detail = '') => results.push({ ok: true, name, detail });
 const fail = (name, detail, fix) => results.push({ ok: false, name, detail, fix });
 
-/** Antivirus HTTPS/SMTP scanning or a proxy re-signs TLS with its own root certificate. */
-const isInterceptedTls = (code) => /UNABLE_TO_VERIFY_LEAF_SIGNATURE|SELF_SIGNED_CERT_IN_CHAIN|UNABLE_TO_GET_ISSUER_CERT/.test(code ?? '');
+/**
+ * Antivirus HTTPS/email scanning or a proxy re-signs TLS with its own root
+ * certificate. Accepts an error, code or message; follows `cause` (fetch wraps
+ * the real TLS error as "fetch failed").
+ */
+function isInterceptedTls(errOrText) {
+  const pattern = /UNABLE_TO_VERIFY_LEAF_SIGNATURE|SELF_SIGNED_CERT_IN_CHAIN|UNABLE_TO_GET_ISSUER_CERT|unable to verify the first certificate|self[- ]signed certificate/i;
+  for (let e = errOrText; e; e = e.cause) {
+    if (typeof e === 'string') return pattern.test(e);
+    if (pattern.test(`${e.code ?? ''} ${e.message ?? ''}`)) return true;
+  }
+  return false;
+}
 const TLS_FIX =
-  'Antivirus scanning or a proxy is re-signing TLS. Point NODE_EXTRA_CA_CERTS at its root certificate ' +
-  '(Norton: C:\\ProgramData\\Norton\\Antivirus\\wscert.pem) and open a new terminal. See README > Troubleshooting';
+  'Antivirus scanning (e.g. Norton Web/Mail Shield) or a proxy is re-signing TLS. Run via npm scripts ' +
+  '(they use --use-system-ca), use SMTP port 587, or exclude node.exe from the scan. See README > Troubleshooting';
 
 async function checkDatabase() {
   const { db } = await import('../src/lib/supabase.js');
@@ -42,14 +53,17 @@ async function checkDatabase() {
   ];
 
   for (const [table, columns] of expectations) {
-    const { error, count } = await db.from(table).select(columns, { count: 'exact', head: true });
+    // limit(0) (not a HEAD request) so errors come back with a message.
+    const { error, count } = await db.from(table).select(columns, { count: 'exact' }).limit(0);
     if (!error) {
       pass(`Table ${table}`, `${count ?? 0} rows`);
       continue;
     }
     const cause = error.message ?? '';
-    if (isInterceptedTls(cause) || /fetch failed/i.test(cause)) {
-      fail('Database reachable', cause, isInterceptedTls(cause) ? TLS_FIX : 'Check SUPABASE_URL and your internet connection');
+    if (/fetch failed/i.test(cause) || isInterceptedTls(error)) {
+      const tls = isInterceptedTls(error) || isInterceptedTls(cause);
+      const detail = error.details ? `${cause} (${error.details})` : cause;
+      fail('Database reachable', detail, tls ? TLS_FIX : 'Check SUPABASE_URL, your internet connection, and whether antivirus/proxy scanning is intercepting HTTPS');
       return;
     }
     if (/invalid api key|jwt/i.test(cause)) {
@@ -84,7 +98,7 @@ async function checkSmtp() {
     const code = err.code ?? '';
     let fix = 'Check email.smtp host/port/secure in config/default.json';
     if (code === 'EAUTH') fix = 'SMTP_USER / SMTP_PASSWORD rejected (Resend: user "resend", password = API key)';
-    else if (isInterceptedTls(code) || isInterceptedTls(err.message)) fix = TLS_FIX;
+    else if (isInterceptedTls(err)) fix = TLS_FIX;
     else if (['ETIMEDOUT', 'ECONNECTION', 'ESOCKET'].includes(code)) {
       fix = `Could not reach ${where}. Port blocked by a firewall/ISP? Try port 587 with "secure": false`;
     }
