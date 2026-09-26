@@ -21,6 +21,16 @@ async function main() {
   if (config.isSandbox && config.isProduction) {
     return failStartup('Refusing to start: sandbox mode is not allowed when NODE_ENV=production.');
   }
+  // Stub mode signs anyone in with a fixed code — never on a real deployment.
+  if (config.stub.enabled && config.isProduction) {
+    return failStartup('Refusing to start: STUB_ON=true is not allowed when NODE_ENV=production.');
+  }
+  if (config.stub.enabled) {
+    logger.warn(
+      `[stub] STUB_ON=true: no emails are sent; registrations auto-verify after ${config.stub.autoVerifyAfterSec}s; ` +
+        `sign-in code is always ${config.stub.otpCode}. Set STUB_ON=false for live email.`,
+    );
+  }
 
   // Validate secrets before anything else so misconfiguration fails loudly.
   try {

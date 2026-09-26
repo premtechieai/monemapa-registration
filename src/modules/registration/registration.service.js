@@ -120,14 +120,24 @@ export async function verifyEmail(token) {
     throw Errors.linkExpired();
   }
 
-  // Requirement: save the successful registration in the database.
-  const profile = await users.create({ email: registration.email, fullName: registration.full_name });
-  const verified = await registrations.markVerified(registration.id, profile.id);
-  if (!verified) throw Errors.linkInvalid(); // another click won the race
-
-  logger.info('Email verified, registration completed', { registrationId: registration.id, userId: profile.id });
+  if (!(await completeRegistration(registration))) throw Errors.linkInvalid(); // another click won the race
   return { status: RegistrationStatus.VERIFIED, email: registration.email };
 }
+
+/**
+ * Save the successful registration: create the profile and mark the
+ * registration verified. Returns false if it was no longer pending.
+ */
+async function completeRegistration(registration) {
+  const profile = await users.create({ email: registration.email, fullName: registration.full_name });
+  const verified = await registrations.markVerified(registration.id, profile.id);
+  if (verified) logger.info('Email verified, registration completed', { registrationId: registration.id, userId: profile.id });
+  return Boolean(verified);
+}
+
+/** Stub mode: treat the email as verified once autoVerifyAfterSec has passed since the (skipped) email. */
+const stubAutoVerifyDue = (registration) =>
+  config.stub.enabled && secondsSince(registration.last_sent_at) >= config.stub.autoVerifyAfterSec;
 
 /** Load a registration and check the caller owns it (holds its poll secret). */
 async function loadOwned(registrationId, pollSecret) {
@@ -144,7 +154,14 @@ async function loadOwned(registrationId, pollSecret) {
  *          that is allowed to sign the user in.
  */
 export async function getStatus(registrationId, pollSecret) {
-  const registration = await loadOwned(registrationId, pollSecret);
+  let registration = await loadOwned(registrationId, pollSecret);
+
+  // Stub mode (STUB_ON=true): no email was sent, so verify automatically.
+  if (registration.status === RegistrationStatus.PENDING && !isExpired(registration) && stubAutoVerifyDue(registration)) {
+    logger.info('[stub] Auto-verifying registration', { registrationId });
+    await completeRegistration(registration);
+    registration = await registrations.findById(registrationId);
+  }
 
   if (registration.status === RegistrationStatus.VERIFIED) {
     // Rows verified before migration 002 have no user_id; match them by email.

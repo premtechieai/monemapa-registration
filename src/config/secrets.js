@@ -38,9 +38,10 @@ const productionSchema = z.object({
     .refine((v) => !v.includes('your-project-ref'), 'SUPABASE_URL still has its placeholder value'),
   SUPABASE_SERVICE_ROLE_KEY: realValue('SUPABASE_SERVICE_ROLE_KEY', 20),
 
-  // Email (SMTP login; host/port/sender live in config/*.json)
-  SMTP_USER: realValue('SMTP_USER', 1),
-  SMTP_PASSWORD: realValue('SMTP_PASSWORD', 1),
+  // Email (SMTP login; host/port/sender live in config/*.json).
+  // Optional in stub mode (STUB_ON=true), where no email is sent.
+  SMTP_USER: config.stub.enabled ? z.string().optional() : realValue('SMTP_USER', 1),
+  SMTP_PASSWORD: config.stub.enabled ? z.string().optional() : realValue('SMTP_PASSWORD', 1),
 
   // Signs cookies and keys the hashes of one-time codes.
   COOKIE_SECRET: realValue('COOKIE_SECRET', 32),
