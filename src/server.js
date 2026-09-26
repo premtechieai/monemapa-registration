@@ -4,6 +4,7 @@
  */
 import config from './config/index.js';
 import { getSecrets } from './config/secrets.js';
+import { assertSafeConfig } from './config/guards.js';
 import logger from './lib/logger.js';
 
 /**
@@ -17,19 +18,11 @@ function failStartup(message) {
 }
 
 async function main() {
-  // The sandbox fakes auth and email — it must never serve real users.
-  if (config.isSandbox && config.isProduction) {
-    return failStartup('Refusing to start: sandbox mode is not allowed when NODE_ENV=production.');
-  }
-  // Stub mode signs anyone in with a fixed code — never on a real deployment.
-  if (config.stub.enabled && config.isProduction) {
-    return failStartup('Refusing to start: STUB_ON=true is not allowed when NODE_ENV=production.');
-  }
-  if (config.stub.enabled) {
-    logger.warn(
-      `[stub] STUB_ON=true: no emails are sent; registrations auto-verify after ${config.stub.autoVerifyAfterSec}s; ` +
-        `sign-in code is always ${config.stub.otpCode}. Set STUB_ON=false for live email.`,
-    );
+  // Same checks createApp() runs; done first here for a clean error message.
+  try {
+    assertSafeConfig();
+  } catch (err) {
+    return failStartup(err.message);
   }
 
   // Validate secrets before anything else so misconfiguration fails loudly.
@@ -39,9 +32,8 @@ async function main() {
     return failStartup(err.message);
   }
 
-  // Imported after the checks: loading the app creates the Supabase clients.
-  const { createApp } = await import('./app.js');
-  const app = await createApp();
+  // Imported after the checks: loading the app creates the database client.
+  const { default: app } = await import('./app.js');
 
   const server = app.listen(config.app.port, () => {
     logger.info(`${config.app.name} registration module running`, {

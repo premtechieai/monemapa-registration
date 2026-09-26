@@ -1,13 +1,17 @@
 /**
- * Express application factory: middleware, API and the static front end.
- * Kept separate from server.js so it can be imported by tests without
- * opening a port.
+ * Express application: middleware, API and the static front end.
+ *
+ *  - `createApp()` builds a fresh app (used by tests).
+ *  - The default export is a ready-built app. src/server.js listens on it
+ *    for `npm start` / `npm run dev`; serverless platforms such as Vercel
+ *    import this module and use the default export directly (no listen).
  */
 import path from 'node:path';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import config from './config/index.js';
 import { getSecrets } from './config/secrets.js';
+import { assertSafeConfig } from './config/guards.js';
 import { securityHeaders } from './middleware/security.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import apiRoutes from './routes.js';
@@ -16,6 +20,9 @@ import configRoutes from './modules/config/config.routes.js';
 const PUBLIC_DIR = path.resolve(process.cwd(), 'public');
 
 export async function createApp() {
+  // Refuse unsafe setups (e.g. STUB_ON in production) however we're started.
+  assertSafeConfig();
+
   const app = express();
 
   // Behind a load balancer / reverse proxy, trust X-Forwarded-* so rate
@@ -57,3 +64,7 @@ export async function createApp() {
   app.use(errorHandler);
   return app;
 }
+
+// Ready-built app for src/server.js and serverless platforms (Vercel).
+const app = await createApp();
+export default app;
