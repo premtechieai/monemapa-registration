@@ -36,6 +36,8 @@ export const Errors = {
       'EMAIL_QUOTA_EXCEEDED',
       "We can't send emails right now because the hourly sending limit was reached. Please try again later.",
     ),
+  emailSendFailed: () =>
+    new AppError(502, 'EMAIL_SEND_FAILED', "We couldn't send the email just now. Please try again in a moment."),
   otpInvalid: (attemptsLeft) =>
     new AppError(401, 'OTP_INVALID', 'Incorrect code.', { attemptsLeft }),
   otpExpired: () => new AppError(410, 'OTP_EXPIRED', 'This code has expired. Request a new one.'),
