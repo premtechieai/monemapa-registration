@@ -18,6 +18,7 @@ const publicConfig = Object.freeze({
   routes: config.routes,
   links: config.links,
   finance: config.finance,
+  dashboard: { chartMonths: config.dashboard.chartMonths, addTransactionLinks: config.dashboard.addTransactionLinks },
   transactions: config.transactions,
   ui: config.ui,
   registration: {

@@ -218,6 +218,8 @@ All URLs, routes, timings and email settings live in `config/*.json`. The browse
 | `routes.*` | `/register`, `/verify`, `/welcome`, `/login`, `/login/code`, `/dashboard`, `/transactions`, `/verified` | Page URLs |
 | `links.termsUrl` / `privacyUrl` | `/legal/*.html` | Linked from the registration form |
 | `ui.showPreviewToggle` | `true` | Desktop/Mobile preview toolbar above the registration and dashboard pages (`false` = full-page layout) |
+| `dashboard.chartMonths` / `recentTransactions` / `maxDonutSegments` | `6` / `5` / `5` | Dashboard chart window, recent list length, donut slices before "Everything else" |
+| `dashboard.addTransactionLinks.income` / `.expense` | `/transactions?add=income&category=salary` / `?add=expense&category=groceries` | Targets of the dashboard **+** buttons (`category` preselects a category) |
 | `finance.currency` | `AED` | Currency for all amounts on the dashboard and transactions pages |
 | `transactions.autoApplyAI` | `true` | Pre-select the top AI category suggestion while typing a description |
 | `transactions.showConfidence` | `true` | Show the confidence % on AI suggestion chips |
@@ -252,6 +254,7 @@ All errors use the same shape: `{ "error": { "code": "EMAIL_EXISTS", "message": 
 | `POST /v1/auth/otp/verify` `{ challengeId, code }` | Check code, start session | `200 AUTHENTICATED` · `401 OTP_INVALID` · `410 OTP_EXPIRED` · `429 OTP_LOCKED` |
 | `POST /v1/auth/logout` | End session | `204` |
 | `GET /v1/me` | Current user + session | `200` · `401 UNAUTHENTICATED` |
+| `GET /v1/dashboard?month=YYYY-MM&today=YYYY-MM-DD` | Everything the dashboard shows for a month (computed on the server) | `200` · `401` · `422` |
 | `GET /v1/transactions?from&to` | The user's categories, transactions and rules | `200` · `401` |
 | `POST /v1/transactions` · `PATCH` / `DELETE /v1/transactions/:id` | Create, edit, delete (delete returns the row for Undo) | `201`/`200` · `404` · `422 INVALID` |
 | `POST /v1/transactions/suggest` `{ description, type }` | Top-3 category suggestions (saved rule → keyword model → history) | `200` |
@@ -289,7 +292,11 @@ After a successful sign-in (and from **Go to dashboard** after registration) the
   sign-in when it's missing or expired; the page then loads the user from `GET /v1/me`. **Sign out** revokes the
   session. (A dashboard on a *different* domain would not receive the cookie.)
 - **Files:** `public/dashboard.html`, `public/css/dashboard.css`, `public/js/dashboard/` (`main.js`, SVG `charts.js`).
-- The Income / Spending **+** buttons open the Transactions page with the Add panel ready for that type.
+- **Data:** `GET /v1/dashboard` returns the month's KPIs, 6-month series, category breakdowns, spending pace and recent
+  transactions, computed on the server (`src/modules/dashboard/dashboard.calculator.js`, unit-tested).
+- The Income / Spending **+** buttons follow `dashboard.addTransactionLinks` (Add panel with type and category
+  preselected). **View all** opens Transactions on the same month; `?month=YYYY-MM` works on both pages.
+- Signed-in users who open `/` go straight to the dashboard.
 
 ## Transactions
 

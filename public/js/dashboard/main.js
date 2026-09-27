@@ -1,92 +1,100 @@
 /**
- * Dashboard page.
+ * Dashboard (Overview) page.
  *
  * Session, header, navigation and the Desktop/Mobile toolbar come from the
  * shared finance shell (../finance/shell.js): the page is only served to
  * signed-in users and reuses the login session.
  *
- * Data: the user's transactions from the server (../finance/transactions-store.js). Totals, trends and
- * charts are computed per selected month, following the dashboard design.
- * The Income/Spending "+" buttons open the Transactions page's Add panel.
+ * Data: GET /v1/dashboard?month=YYYY-MM&today=YYYY-MM-DD — KPIs, the 6-month
+ * series, category breakdowns, spending pace and recent transactions are
+ * computed on the server (src/modules/dashboard/dashboard.calculator.js).
+ *
+ * Routing to Transactions: the Income/Spending "+" buttons follow
+ * config.dashboard.addTransactionLinks; "View all" keeps the selected month.
+ * The month is kept in the URL (?month=YYYY-MM) so it survives reloads.
  */
+import { api } from '../core/api.js';
 import { h, replaceChildren, svg } from '../core/dom.js';
 import { alertBox } from '../components/ui.js';
 import { initShell, routeUrl } from '../finance/shell.js';
-import { loadTransactionsStore } from '../finance/transactions-store.js';
 import { barChart, donut, lineChart, niceMax } from './charts.js';
 
 const $ = (id) => document.getElementById(id);
+const pad = (n) => String(n).padStart(2, '0');
 
-const state = {
-  ym: { y: new Date().getFullYear(), m: new Date().getMonth() },
-  txs: [],
-  cats: [],
+/** Local calendar dates (the user's day, not UTC). */
+const todayKey = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
+const thisMonth = () => todayKey().slice(0, 7);
+const shiftMonthKey = (month, delta) => {
+  const [y, m] = month.split('-').map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+};
+const monthDate = (month) => {
+  const [y, m] = month.split('-').map(Number);
+  return new Date(y, m - 1, 1);
+};
+const monthName = (month, style = 'long') =>
+  monthDate(month).toLocaleDateString(undefined, style === 'long' ? { month: 'long', year: 'numeric' } : { month: style });
 
 let config;
 let fmt; // Intl.NumberFormat for config.finance.currency
 let compact; // v => "AED 2.4K"
-
-/** Transactions page with the "Add" panel open for this type (routes.transactions). */
-const addUrl = (type) => routeUrl(config, 'transactions', { add: type });
-
-// --- Data helpers -----------------------------------------------------------------
-
-const monthKey = (y, m) => {
-  const d = new Date(y, m, 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-};
-const inMonth = (y, m) => state.txs.filter((t) => t.date.startsWith(monthKey(y, m)));
-const sum = (txs, type) => txs.filter((t) => t.type === type).reduce((a, t) => a + t.amount, 0);
-
-function categoryOf(id) {
-  const map = Object.fromEntries(state.cats.map((c) => [c.id, c]));
-  return map[id] || map.other || { name: 'Other', color: '#8c8fa1' };
-}
-
-/** Cumulative daily spend: [[1, total], [2, total], ...]. */
-function cumulative(txs, days) {
-  const perDay = Array(days + 1).fill(0);
-  txs.filter((t) => t.type === 'expense').forEach((t) => (perDay[+t.date.slice(8, 10)] += t.amount));
-  const out = [];
-  let running = 0;
-  for (let d = 1; d <= days; d++) out.push([d, (running += perDay[d])]);
-  return out;
-}
+let month = thisMonth();
+let request = 0; // ignore responses for months the user already left
 
 const empty = (text) => h('div', { class: 'empty' }, text);
 
-// --- Render -------------------------------------------------------------------------
-
-function render() {
-  const { y, m } = state.ym;
-  const prevDate = new Date(y, m - 1, 1);
-  const monthLabel = new Date(y, m, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
-  const monthShort = new Date(y, m, 1).toLocaleDateString(undefined, { month: 'short' });
-  const prevShort = prevDate.toLocaleDateString(undefined, { month: 'short' });
-
-  const cur = inMonth(y, m);
-  const prev = inMonth(y, m - 1);
-  const inc = sum(cur, 'income'), exp = sum(cur, 'expense');
-  const pInc = sum(prev, 'income'), pExp = sum(prev, 'expense');
-
-  $('month-label').textContent = monthLabel;
-  $('subtitle').textContent = `Here's your ${monthLabel} at a glance.`;
-  document.querySelectorAll('[data-month-label]').forEach((el) => (el.textContent = monthLabel));
-
-  renderKpis({ inc, exp, pInc, pExp, prevShort });
-  renderBars(y, m);
-  renderCategories(cur, exp, monthLabel);
-  renderPace({ y, m, cur, prev, monthShort, prevShort });
-  renderSources(cur, inc, monthLabel);
-  renderRecent(cur);
+/** Where the "+" buttons go (config.dashboard.addTransactionLinks), with a safe default. */
+function addUrl(type) {
+  return config.dashboard?.addTransactionLinks?.[type] || routeUrl(config, 'transactions', { add: type });
 }
 
-function renderKpis({ inc, exp, pInc, pExp, prevShort }) {
-  const net = inc - exp;
-  const rate = inc > 0 ? net / inc : 0;
-  const pNet = pInc - pExp;
-  const pRate = pInc > 0 ? pNet / pInc : null;
+// --- Load -------------------------------------------------------------------------
+
+async function load() {
+  const req = ++request;
+  const label = monthName(month);
+  $('month-label').textContent = label;
+  $('next-month').disabled = month >= thisMonth(); // no future months
+  $('main').setAttribute('aria-busy', 'true');
+
+  // Keep the month in the URL and in the "View all" links.
+  const url = new URL(location.href);
+  if (month === thisMonth()) url.searchParams.delete('month');
+  else url.searchParams.set('month', month);
+  history.replaceState(null, '', url.pathname + url.search);
+  document.querySelectorAll('.card__link[data-nav="transactions"]').forEach((a) => (a.href = routeUrl(config, 'transactions', { month })));
+
+  let data;
+  try {
+    data = await api.get(`/dashboard?month=${month}&today=${todayKey()}`);
+  } catch (err) {
+    if (err.status === 401) return location.replace(config.routes.login);
+    throw err;
+  }
+  if (req !== request) return;
+
+  $('error').hidden = true;
+  $('subtitle').textContent = `Here's your ${label} at a glance.`;
+  document.querySelectorAll('[data-month-label]').forEach((el) => (el.textContent = label));
+  renderKpis(data);
+  renderBars(data);
+  renderCategories(data, label);
+  renderPace(data);
+  renderSources(data, label);
+  renderRecent(data);
+  $('main').removeAttribute('aria-busy');
+}
+
+// --- Render -----------------------------------------------------------------------
+
+function renderKpis({ kpis, prevMonth }) {
+  const prevShort = monthName(prevMonth, 'short');
+  const prev = kpis.previous;
 
   /** "▲ 4.2% vs Aug", coloured good/bad depending on direction. */
   const delta = (a, b, upIsGood) => {
@@ -98,29 +106,32 @@ function renderKpis({ inc, exp, pInc, pExp, prevShort }) {
   };
 
   const cards = [
-    { label: 'Income', dot: '#40a02b', value: fmt.format(inc), delta: delta(inc, pInc, true), add: 'income' },
-    { label: 'Spending', dot: '#8839ef', value: fmt.format(exp), delta: delta(exp, pExp, false), add: 'expense' },
+    { label: 'Income', dot: '#40a02b', value: fmt.format(kpis.income), delta: delta(kpis.income, prev?.income, true), add: 'income' },
+    { label: 'Spending', dot: '#8839ef', value: fmt.format(kpis.expense), delta: delta(kpis.expense, prev?.expense, false), add: 'expense' },
     {
       label: 'Net savings',
       dot: '#1e66f5',
-      value: `${net < 0 ? '− ' : ''}${fmt.format(Math.abs(net))}`,
-      valueCls: net < 0 ? 'is-bad' : 'is-good',
-      delta: { text: pInc ? `${net - pNet >= 0 ? '▲' : '▼'} ${fmt.format(Math.abs(net - pNet))} vs ${prevShort}` : `No data for ${prevShort}`, cls: '' },
+      value: `${kpis.net < 0 ? '− ' : ''}${fmt.format(Math.abs(kpis.net))}`,
+      valueCls: kpis.net < 0 ? 'is-bad' : 'is-good',
+      delta: {
+        text: prev ? `${kpis.net - prev.net >= 0 ? '▲' : '▼'} ${fmt.format(Math.abs(kpis.net - prev.net))} vs ${prevShort}` : `No data for ${prevShort}`,
+        cls: '',
+      },
     },
     {
       label: 'Savings rate',
       dot: '#df8e1d',
-      value: `${Math.round(rate * 100)}%`,
-      delta: { text: pRate === null ? 'Share of income kept' : `${prevShort} was ${Math.round(pRate * 100)}%`, cls: '' },
-      meter: Math.max(0, Math.min(100, rate * 100)),
+      value: `${Math.round(kpis.savingsRate * 100)}%`,
+      delta: { text: prev ? `${prevShort} was ${Math.round(prev.savingsRate * 100)}%` : 'Share of income kept', cls: '' },
+      meter: Math.max(0, Math.min(100, kpis.savingsRate * 100)),
     },
   ];
 
   replaceChildren(
     $('kpis'),
     cards.map((c) => {
-      // "+" on Income and Spending opens the Transactions page with the Add
-      // panel ready for that type (routes.transactions?add=income|expense).
+      // "+" on Income and Spending opens the Transactions page's Add panel
+      // (targets configurable: config.dashboard.addTransactionLinks).
       const label = c.add === 'income' ? 'Add income' : 'Add expense';
       return h(
         'div',
@@ -144,38 +155,27 @@ function renderKpis({ inc, exp, pInc, pExp, prevShort }) {
   );
 }
 
-function renderBars(y, m) {
-  const series = [5, 4, 3, 2, 1, 0].map((k) => {
-    const d = new Date(y, m - k, 1);
-    const txs = inMonth(d.getFullYear(), d.getMonth());
-    return {
-      label: d.toLocaleDateString(undefined, { month: 'short' }),
-      full: d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }),
-      inc: sum(txs, 'income'),
-      exp: sum(txs, 'expense'),
-      cur: k === 0,
-    };
-  });
-  const max = niceMax(Math.max(1, ...series.map((p) => Math.max(p.inc, p.exp))));
-  replaceChildren($('bar-chart'), barChart(series, { max, fmt, compact }));
+function renderBars({ series }) {
+  const points = series.map((p) => ({
+    label: monthName(p.month, 'short'),
+    full: monthName(p.month),
+    inc: p.income,
+    exp: p.expense,
+    cur: p.current,
+  }));
+  const max = niceMax(Math.max(1, ...points.map((p) => Math.max(p.inc, p.exp))));
+  $('bars-sub').textContent = `Last ${points.length} months`;
+  replaceChildren($('bar-chart'), barChart(points, { max, fmt, compact }));
 }
 
-function renderCategories(cur, exp, monthLabel) {
-  if (exp <= 0) return replaceChildren($('categories'), empty(`No spending recorded for ${monthLabel}.`));
+function renderCategories({ spendingByCategory, kpis }, label) {
+  if (kpis.expense <= 0) return replaceChildren($('categories'), empty(`No spending recorded for ${label}.`));
 
-  const byCat = {};
-  cur.filter((t) => t.type === 'expense').forEach((t) => (byCat[t.categoryId] = (byCat[t.categoryId] || 0) + t.amount));
-  let segments = Object.entries(byCat)
-    .sort((a, b) => b[1] - a[1])
-    .map(([id, v]) => ({ id, v, name: categoryOf(id).name, color: categoryOf(id).color }));
-  if (segments.length > 6) {
-    const rest = segments.slice(5).reduce((a, x) => a + x.v, 0);
-    segments = segments.slice(0, 5).concat({ id: '_rest', v: rest, name: 'Everything else', color: '#9ca0b0' });
-  }
+  const segments = spendingByCategory.map((r) => ({ id: r.id, v: r.amount, name: r.name, color: r.color, pct: r.pct }));
 
   // Hover on either the donut or the legend highlights the same category.
   let rows = [];
-  const chart = donut(segments, { total: exp, compact, onHover: (id) => highlight(id) });
+  const chart = donut(segments, { total: kpis.expense, compact, onHover: (id) => highlight(id) });
   function highlight(id) {
     chart.highlight(id);
     rows.forEach(([sg, row]) => row.classList.toggle('is-dim', Boolean(id) && sg.id !== id));
@@ -187,7 +187,7 @@ function renderCategories(cur, exp, monthLabel) {
       h('span', { class: 'swatch', style: { background: sg.color } }),
       h('span', { class: 'legend-row__name' }, sg.name),
       h('span', { class: 'num' }, fmt.format(sg.v)),
-      h('span', { class: 'legend-row__pct' }, `${Math.round((sg.v / exp) * 100)}%`),
+      h('span', { class: 'legend-row__pct' }, `${sg.pct}%`),
     );
     return [sg, row];
   });
@@ -203,22 +203,17 @@ function renderCategories(cur, exp, monthLabel) {
   );
 }
 
-function renderPace({ y, m, cur, prev, monthShort, prevShort }) {
-  const today = new Date();
-  const isCurrentMonth = today.getFullYear() === y && today.getMonth() === m;
-  const daysCur = new Date(y, m + 1, 0).getDate();
-  const daysPrev = new Date(y, m, 0).getDate();
-  const days = Math.max(daysCur, daysPrev);
-
-  const upTo = isCurrentMonth ? today.getDate() : daysCur;
-  const curPts = cumulative(cur, daysCur).slice(0, upTo);
-  const prevPts = cumulative(prev, daysPrev);
+function renderPace({ pace, isCurrentMonth, month: m, prevMonth }) {
+  const prevShort = monthName(prevMonth, 'short');
+  const curPts = pace.current;
+  const prevPts = pace.previous;
   const max = niceMax(Math.max(1, ...curPts.map((p) => p[1]), ...prevPts.map((p) => p[1])));
 
-  $('pace-cur').textContent = monthShort;
+  $('pace-cur').textContent = monthName(m, 'short');
   $('pace-prev').textContent = prevShort;
-  replaceChildren($('line-chart'), lineChart(curPts, prevPts, { days, max, compact }));
+  replaceChildren($('line-chart'), lineChart(curPts, prevPts, { days: pace.daysInMonth, max, compact }));
 
+  const upTo = pace.currentDays;
   const prevSameDay = prevPts.length ? prevPts[Math.min(upTo, prevPts.length) - 1][1] : 0;
   const now = curPts.length ? curPts[curPts.length - 1][1] : 0;
   let note = '';
@@ -232,68 +227,50 @@ function renderPace({ y, m, cur, prev, monthShort, prevShort }) {
   $('pace-note').textContent = note;
 }
 
-function renderSources(cur, inc, monthLabel) {
-  if (inc <= 0) return replaceChildren($('sources'), empty(`No income recorded for ${monthLabel}.`));
-
-  const bySource = {};
-  cur.filter((t) => t.type === 'income').forEach((t) => (bySource[t.categoryId] = (bySource[t.categoryId] || 0) + t.amount));
+function renderSources({ incomeBySource, kpis }, label) {
+  if (kpis.income <= 0) return replaceChildren($('sources'), empty(`No income recorded for ${label}.`));
   replaceChildren(
     $('sources'),
     h(
       'div',
       { class: 'sources' },
-      Object.entries(bySource)
-        .sort((a, b) => b[1] - a[1])
-        .map(([id, v]) => {
-          const c = categoryOf(id);
-          return h(
+      incomeBySource.map((r) =>
+        h(
+          'div',
+          {},
+          h(
             'div',
-            {},
-            h(
-              'div',
-              { class: 'source__head' },
-              h('span', { class: 'legend-row__name' }, c.name),
-              h('span', { class: 'num' }, `${fmt.format(v)} `, h('span', { class: 'legend-row__pct' }, `· ${Math.round((v / inc) * 100)}%`)),
-            ),
-            h('div', { class: 'meter source__bar' }, h('div', { class: 'meter__fill', style: { width: `${Math.max(2, (v / inc) * 100)}%`, background: c.color } })),
-          );
-        }),
+            { class: 'source__head' },
+            h('span', { class: 'legend-row__name' }, r.name),
+            h('span', { class: 'num' }, `${fmt.format(r.amount)} `, h('span', { class: 'legend-row__pct' }, `· ${r.pct}%`)),
+          ),
+          h('div', { class: 'meter source__bar' }, h('div', { class: 'meter__fill', style: { width: `${Math.max(2, r.pct)}%`, background: r.color } })),
+        ),
+      ),
     ),
   );
 }
 
-function renderRecent(cur) {
-  const recent = cur
-    .slice()
-    .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt)
-    .slice(0, 5);
+function renderRecent({ recent }) {
   if (!recent.length) return replaceChildren($('recent'), empty('No transactions this month yet.'));
-
   replaceChildren(
     $('recent'),
     recent.map((t) => {
-      const c = categoryOf(t.categoryId);
       const [yy, mm, dd] = t.date.split('-').map(Number);
       const date = new Date(yy, mm - 1, dd).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
       const income = t.type === 'income';
       return h(
         'div',
         { class: 'tx' },
-        h('span', { class: 'tx__icon', style: { background: `${c.color}1f` } }, h('span', { class: 'dot', style: { background: c.color, width: '10px', height: '10px' } })),
-        h('div', { class: 'tx__body' }, h('span', { class: 'tx__desc' }, t.description), h('span', { class: 'tx__meta' }, `${date} · ${c.name}`)),
+        h('span', { class: 'tx__icon', style: { background: `${t.categoryColor}1f` } }, h('span', { class: 'dot', style: { background: t.categoryColor, width: '10px', height: '10px' } })),
+        h('div', { class: 'tx__body' }, h('span', { class: 'tx__desc' }, t.description), h('span', { class: 'tx__meta' }, `${date} · ${t.categoryName}`)),
         h('span', { class: `tx__amount ${income ? 'is-good' : ''}` }, `${income ? '+ ' : '− '}${fmt.format(t.amount)}`),
       );
     }),
   );
 }
 
-// --- Boot -----------------------------------------------------------------------
-
-function shiftMonth(delta) {
-  const d = new Date(state.ym.y, state.ym.m + delta, 1);
-  state.ym = { y: d.getFullYear(), m: d.getMonth() };
-  render();
-}
+// --- Boot -------------------------------------------------------------------------
 
 function showGreeting(user) {
   const first = (user.fullName || '').split(/\s+/)[0];
@@ -302,17 +279,19 @@ function showGreeting(user) {
   $('greeting').textContent = first ? `${greet}, ${first}` : greet;
 }
 
+function showError(err) {
+  const slot = $('error');
+  slot.hidden = false;
+  replaceChildren(slot, alertBox({ title: "We couldn't load your dashboard", body: err.message, action: { label: 'Try again →', onClick: () => load().catch(showError) } }));
+}
+
 async function main() {
-  // Session, header, navigation and the Desktop/Mobile toolbar (shared with
-  // the Transactions page).
-  let tx;
   const shell = await initShell({
     kicker: 'finance/dashboard v1.0',
     title: 'Monthly dashboard',
-    onReset: async () => {
-      // Reload the user's data from the server and jump back to the current month.
-      state.ym = { y: new Date().getFullYear(), m: new Date().getMonth() };
-      if (tx) await tx.reload();
+    onReset: () => {
+      month = thisMonth(); // back to this month, reloaded from the server
+      load().catch(showError);
     },
   });
   if (!shell) return; // redirecting to sign-in
@@ -321,25 +300,24 @@ async function main() {
   compact = shell.money.compact;
   showGreeting(shell.user);
 
-  // The signed-in user's transactions from the server (GET /v1/transactions).
-  tx = await loadTransactionsStore();
-  state.cats = tx.categories();
-  state.txs = tx.list();
-  tx.subscribe(() => {
-    state.txs = tx.list();
-    render();
+  // ?month=YYYY-MM deep link (past months only).
+  const requested = new URLSearchParams(location.search).get('month');
+  if (/^\d{4}-(0[1-9]|1[0-2])$/.test(requested ?? '') && requested <= thisMonth()) month = requested;
+
+  $('prev-month').addEventListener('click', () => {
+    month = shiftMonthKey(month, -1);
+    load().catch(showError);
+  });
+  $('next-month').addEventListener('click', () => {
+    if (month >= thisMonth()) return;
+    month = shiftMonthKey(month, 1);
+    load().catch(showError);
   });
 
-  $('prev-month').addEventListener('click', () => shiftMonth(-1));
-  $('next-month').addEventListener('click', () => shiftMonth(1));
-
-  render();
-  $('main').removeAttribute('aria-busy');
+  await load();
 }
 
 main().catch((err) => {
-  const slot = $('error');
-  slot.hidden = false;
-  replaceChildren(slot, alertBox({ title: "We couldn't load your dashboard", body: err.message, action: { label: 'Try again →', onClick: () => location.reload() } }));
+  showError(err);
   $('greeting').textContent = 'Dashboard';
 });

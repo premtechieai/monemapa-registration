@@ -719,3 +719,13 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* No future months: the "next" arrow is disabled on the current month. */
+.month-picker__btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+.month-picker__btn:disabled:hover {
+  background: transparent;
+}

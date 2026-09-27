@@ -434,9 +434,15 @@ function openEditor(next) {
   setTimeout(() => (editing ? f.desc : f.amount).focus(), 330); // after the slide-in
 }
 
-function openAdd(type = 'expense') {
+/**
+ * Open the Add panel. `category` (from ?category=) is preselected when it fits
+ * the type; it then counts as the user's choice, so AI won't replace it.
+ */
+function openAdd(type = 'expense', category = null) {
   if (!S) return;
-  openEditor({ mode: 'add', type });
+  const c = category && S.category(category);
+  const fits = c && c.id === category && (c.type === 'both' || c.type === type);
+  openEditor({ mode: 'add', type, ...(fits ? { cat: category, userPicked: true } : {}) });
 }
 
 function openEdit(t) {
@@ -626,14 +632,31 @@ function wireEvents() {
 }
 
 /** ?add=income|expense (from the dashboard "+" buttons) opens the Add panel. */
+/**
+ * Deep links (from the dashboard):
+ *   ?month=YYYY-MM                      show that month ("View all")
+ *   ?add=income|expense[&category=id]   open the Add panel ("+" buttons,
+ *                                       targets set in config.dashboard.addTransactionLinks)
+ * The add/category params are removed afterwards so a reload doesn't reopen the panel.
+ */
 function handleDeepLink() {
   const params = new URLSearchParams(location.search);
+
+  const month = params.get('month');
+  if (/^\d{4}-(0[1-9]|1[0-2])$/.test(month ?? '')) {
+    const [y, m] = month.split('-').map(Number);
+    state.ym = { y, m: m - 1 };
+    render();
+  }
+
   const add = params.get('add');
   if (add !== 'income' && add !== 'expense') return;
+  const category = params.get('category');
   params.delete('add');
+  params.delete('category');
   const query = params.toString();
   history.replaceState(null, '', location.pathname + (query ? `?${query}` : ''));
-  openAdd(add);
+  openAdd(add, category);
 }
 
 async function main() {
