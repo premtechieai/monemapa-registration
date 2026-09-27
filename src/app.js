@@ -17,6 +17,7 @@ import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import apiRoutes from './routes.js';
 import configRoutes from './modules/config/config.routes.js';
 import { requirePageSession } from './modules/auth/auth.middleware.js';
+import { resolveSession } from './modules/auth/session.js';
 
 const PUBLIC_DIR = path.resolve(process.cwd(), 'public');
 
@@ -73,10 +74,17 @@ export async function createApp() {
   const appRoutes = Object.entries(config.routes)
     .filter(([name]) => name !== 'verified' && !(name in PROTECTED_PAGES))
     .map(([, route]) => route);
-  app.get(['/', ...appRoutes], (req, res) => {
-    if (req.path === '/') return res.redirect(config.routes.register);
-    return res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+  // "/": signed-in users go straight to the dashboard, everyone else to registration.
+  app.get('/', async (req, res, next) => {
+    try {
+      const session = await resolveSession(req);
+      res.set('Cache-Control', 'no-store');
+      return res.redirect(session ? config.routes.dashboard : config.routes.register);
+    } catch (err) {
+      return next(err);
+    }
   });
+  app.get(appRoutes, (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
 
   app.use(errorHandler);
   return app;

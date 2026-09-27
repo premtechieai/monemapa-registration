@@ -8,6 +8,7 @@ import { registrationRoutes, verificationRoutes } from './modules/registration/r
 import authRoutes from './modules/auth/auth.routes.js';
 import userRoutes from './modules/users/users.routes.js';
 import transactionsRoutes from './modules/transactions/transactions.routes.js';
+import dashboardRoutes from './modules/dashboard/dashboard.routes.js';
 
 const api = Router();
 
@@ -20,5 +21,6 @@ api.use(userRoutes);
 // Signed-in data APIs (session required; not under the strict auth rate limit,
 // since category suggestions are requested while typing).
 api.use(transactionsRoutes);
+api.use(dashboardRoutes);
 
 export default api;

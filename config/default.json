@@ -26,6 +26,15 @@
   "ui": {
     "showPreviewToggle": true
   },
+  "dashboard": {
+    "chartMonths": 6,
+    "recentTransactions": 5,
+    "maxDonutSegments": 5,
+    "addTransactionLinks": {
+      "income": "/transactions?add=income&category=salary",
+      "expense": "/transactions?add=expense&category=groceries"
+    }
+  },
   "finance": {
     "currency": "AED"
   },
