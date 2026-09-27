@@ -13,31 +13,45 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import config from '../config/index.js';
+import { CATEGORIES, sampleTransactions } from './seed-data.js';
 import logger from '../lib/logger.js';
 
 // SANDBOX_STATE_FILE lets tests use a throwaway file.
 const STATE_FILE = path.resolve(process.cwd(), process.env.SANDBOX_STATE_FILE ?? config.sandbox.stateFile);
 const MAX_EVENTS = 200;
 // Bump when the stored shape changes; older files are discarded and re-seeded.
-const STATE_VERSION = 2;
+const STATE_VERSION = 3;
 
 const nowIso = () => new Date().toISOString();
 
 function emptyState() {
   return {
     version: STATE_VERSION,
-    tables: { profiles: [], registrations: [], otp_challenges: [], sessions: [] },
+    tables: {
+      profiles: [],
+      registrations: [],
+      otp_challenges: [],
+      sessions: [],
+      categories: [],
+      transactions: [],
+      category_rules: [],
+    },
     inbox: [],
     events: [],
   };
 }
 
-/** Pre-registered users, so the "email already registered" path can be tried immediately. */
+/**
+ * Pre-registered users (so the "email already registered" path can be tried
+ * immediately), the categories, and sample transactions for those users.
+ */
 function seed(state) {
+  state.tables.categories = CATEGORIES.map((c) => ({ ...c }));
   for (const { email, fullName } of config.sandbox.seedUsers) {
     const created = new Date(Date.now() - 12 * 864e5).toISOString();
+    const id = crypto.randomUUID();
     state.tables.profiles.push({
-      id: crypto.randomUUID(),
+      id,
       email,
       full_name: fullName,
       status: 'ACTIVE',
@@ -45,6 +59,8 @@ function seed(state) {
       last_login_at: null,
       updated_at: created,
     });
+    state.tables.transactions.push(...sampleTransactions(id));
+    state.tables.category_rules.push({ id: crypto.randomUUID(), user_id: id, pattern: 'ikea', category_id: 'household', created_at: created, updated_at: created });
   }
   state.events.unshift({ at: nowIso(), type: 'sandbox.seeded', detail: config.sandbox.seedUsers.map((u) => u.email).join(', ') });
   return state;

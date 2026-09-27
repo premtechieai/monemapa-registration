@@ -41,4 +41,8 @@ async function request(method, path, body) {
 export const api = {
   get: (path) => request('GET', path),
   post: (path, body = {}) => request('POST', path, body),
+  put: (path, body = {}) => request('PUT', path, body),
+  patch: (path, body = {}) => request('PATCH', path, body),
+  // Sent with an (empty) JSON body: the API requires JSON on every change (CSRF guard).
+  del: (path) => request('DELETE', path, {}),
 };

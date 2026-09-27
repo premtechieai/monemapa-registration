@@ -10,6 +10,8 @@ const TABLES = [
   { key: 'registrations', label: 'registrations' },
   { key: 'otpChallenges', label: 'otp_challenges' },
   { key: 'sessions', label: 'sessions' },
+  { key: 'transactions', label: 'transactions' },
+  { key: 'categoryRules', label: 'category_rules' },
 ];
 
 let activeTable = 'profiles';
@@ -63,7 +65,7 @@ function renderMail(mail) {
 // --- Database ----------------------------------------------------------------
 function renderRow(row) {
   const status = row.status && h('span', { class: `tag${row.status === 'EXPIRED' ? ' tag--muted' : ''}` }, row.status);
-  const title = row.full_name || row.email || row.method || row.id;
+  const title = row.full_name || row.email || row.description || row.pattern || row.method || row.id;
   return h(
     'div',
     { class: 'sbx__item' },

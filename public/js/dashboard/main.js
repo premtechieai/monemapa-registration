@@ -5,13 +5,14 @@
  * shared finance shell (../finance/shell.js): the page is only served to
  * signed-in users and reuses the login session.
  *
- * Data: window.MoneMapaTx (transactions-service.js). Totals, trends and
+ * Data: the user's transactions from the server (../finance/transactions-store.js). Totals, trends and
  * charts are computed per selected month, following the dashboard design.
  * The Income/Spending "+" buttons open the Transactions page's Add panel.
  */
 import { h, replaceChildren, svg } from '../core/dom.js';
 import { alertBox } from '../components/ui.js';
-import { initShell, routeUrl, whenTransactionsReady } from '../finance/shell.js';
+import { initShell, routeUrl } from '../finance/shell.js';
+import { loadTransactionsStore } from '../finance/transactions-store.js';
 import { barChart, donut, lineChart, niceMax } from './charts.js';
 
 const $ = (id) => document.getElementById(id);
@@ -304,14 +305,14 @@ function showGreeting(user) {
 async function main() {
   // Session, header, navigation and the Desktop/Mobile toolbar (shared with
   // the Transactions page).
+  let tx;
   const shell = await initShell({
     kicker: 'finance/dashboard v1.0',
     title: 'Monthly dashboard',
-    onReset: () => {
-      // Restore the demo transactions and jump back to the current month.
-      window.MoneMapaTx?.reset();
+    onReset: async () => {
+      // Reload the user's data from the server and jump back to the current month.
       state.ym = { y: new Date().getFullYear(), m: new Date().getMonth() };
-      if (state.cats.length) render();
+      if (tx) await tx.reload();
     },
   });
   if (!shell) return; // redirecting to sign-in
@@ -320,7 +321,8 @@ async function main() {
   compact = shell.money.compact;
   showGreeting(shell.user);
 
-  const tx = await whenTransactionsReady();
+  // The signed-in user's transactions from the server (GET /v1/transactions).
+  tx = await loadTransactionsStore();
   state.cats = tx.categories();
   state.txs = tx.list();
   tx.subscribe(() => {

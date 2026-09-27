@@ -4,7 +4,7 @@
  *  - List: month picker, type tabs, category filter and search; a table on
  *    wide screens and a list grouped by day on narrow ones.
  *  - Add / edit: side panel (wide) or bottom sheet (narrow). Categories are
- *    suggested by the AI helper in transactions-service.js; overriding a
+ *    suggested by the server (saved rules + keyword model); overriding a
  *    suggestion can save a rule ("Always categorize …").
  *  - Delete with confirmation, and Undo in the toast.
  *  - Deep link: ?add=income | ?add=expense opens the Add panel with that
@@ -15,7 +15,8 @@
  */
 import { h, replaceChildren, svg } from '../core/dom.js';
 import { alertBox } from '../components/ui.js';
-import { initShell, whenTransactionsReady } from '../finance/shell.js';
+import { initShell } from '../finance/shell.js';
+import { loadTransactionsStore } from '../finance/transactions-store.js';
 
 const $ = (id) => document.getElementById(id);
 const SUGGEST_DELAY_MS = 380;
@@ -23,7 +24,7 @@ const TOAST_MS = 5000;
 
 let config;
 let money; // formatters for config.finance.currency
-let S; // window.MoneMapaTx
+let S; // transactions store (server-backed, see ../finance/transactions-store.js)
 
 const state = {
   ym: { y: new Date().getFullYear(), m: new Date().getMonth() },
@@ -331,7 +332,12 @@ function setLoading(loading) {
 async function runSuggest(description, type, keepPick) {
   const req = ++suggestRequest;
   setLoading(true);
-  const sugs = await S.suggestCategory({ description, type });
+  let sugs = [];
+  try {
+    sugs = await S.suggestCategory({ description, type }); // server: rules + keyword model
+  } catch {
+    /* suggestions are optional — the user can still pick a category */
+  }
   if (req !== suggestRequest || !ed.open) return; // superseded or closed
   ed.sugs = sugs;
   const top = sugs[0];
@@ -462,8 +468,9 @@ function closeEditor() {
   ed.opener?.focus?.();
 }
 
-function save(event) {
+async function save(event) {
   event.preventDefault();
+  if ($('save').disabled) return; // already saving
   const f = fields();
   const amount = parseFloat(f.amount.value.replace(/[^0-9.]/g, ''));
   const errors = {
@@ -492,10 +499,22 @@ function save(event) {
     aiConfidence: ed.aiConf,
   };
   const learned = f.learn.checked && ed.userPicked;
-  if (learned) S.learnRule(S.merchantKey(input.description), ed.cat);
   const adding = ed.mode === 'add';
-  if (adding) S.create(input);
-  else S.update(ed.id, input);
+
+  const saveBtn = $('save');
+  saveBtn.disabled = true;
+  saveBtn.textContent = 'Saving…';
+  try {
+    if (adding) await S.create(input);
+    else await S.update(ed.id, input);
+    if (learned) await S.learnRule(S.merchantKey(input.description), ed.cat);
+  } catch (err) {
+    showServerErrors(err);
+    return;
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = adding ? 'Add transaction' : 'Save changes';
+  }
 
   // Show the month the transaction belongs to.
   const [y, m] = input.date.split('-').map(Number);
@@ -505,9 +524,27 @@ function save(event) {
   showToast(`${adding ? 'Transaction added' : 'Changes saved'}${learned ? ' · rule learned' : ''}`);
 }
 
-function removeTx(id) {
-  const tx = S.remove(id);
-  if (tx) showToast(`“${tx.description}” deleted`, tx);
+/** Put the server's validation messages next to the fields (or in a toast). */
+function showServerErrors(err) {
+  const map = { amount: 'amount', description: 'desc', categoryId: 'cat', date: 'date' };
+  const fieldErrors = err.code === 'INVALID' ? err.details.fields ?? {} : {};
+  let shown = false;
+  for (const [apiField, uiField] of Object.entries(map)) {
+    if (fieldErrors[apiField]) {
+      setError(uiField, fieldErrors[apiField]);
+      shown = true;
+    }
+  }
+  if (!shown) showToast(err.message || "Couldn't save. Please try again.");
+}
+
+async function removeTx(id) {
+  try {
+    const tx = await S.remove(id);
+    showToast(`“${tx.description}” deleted`, tx);
+  } catch (err) {
+    showToast(err.message || "Couldn't delete. Please try again.");
+  }
 }
 
 // --- Toast ---------------------------------------------------------------------
@@ -571,11 +608,17 @@ function wireEvents() {
     closeEditor();
     removeTx(id);
   });
-  $('undo').addEventListener('click', () => {
-    if (undoTx) S.restore(undoTx);
+  $('undo').addEventListener('click', async () => {
+    const tx = undoTx;
     undoTx = null;
     clearTimeout(toastTimer);
     $('toast').hidden = true;
+    if (!tx) return;
+    try {
+      await S.restore(tx);
+    } catch (err) {
+      showToast(err.message || "Couldn't undo. Please try again.");
+    }
   });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && ed.open) closeEditor();
@@ -597,16 +640,20 @@ async function main() {
   const shell = await initShell({
     kicker: 'finance/transactions v1.0',
     title: 'Transactions',
-    onReset: () => {
-      window.MoneMapaTx?.reset();
+    onReset: async () => {
+      // Reload from the server, back to this month with no filters.
       state.ym = { y: new Date().getFullYear(), m: new Date().getMonth() };
-      if (state.cats.length) clearFilters();
+      if (S) {
+        clearFilters();
+        await S.reload();
+      }
     },
   });
   if (!shell) return; // redirecting to sign-in
   ({ config, money } = shell);
 
-  S = await whenTransactionsReady();
+  // The signed-in user's transactions, categories and rules from the server.
+  S = await loadTransactionsStore();
   state.cats = S.categories();
   state.txs = S.list();
   S.subscribe(() => {

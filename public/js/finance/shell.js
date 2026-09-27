@@ -69,14 +69,6 @@ function showUser(config, user) {
   });
 }
 
-/** transactions-service.js is a classic deferred script; wait until it has run. */
-export function whenTransactionsReady() {
-  return new Promise((resolve) => {
-    const check = () => (window.MoneMapaTx ? resolve(window.MoneMapaTx) : setTimeout(check, 30));
-    check();
-  });
-}
-
 /**
  * Set up the page shell.
  * @param {{ kicker: string, title: string, onReset: Function }} toolbar  preview toolbar texts + Reset action
